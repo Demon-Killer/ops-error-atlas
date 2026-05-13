@@ -1,0 +1,57 @@
+---
+import { getCollection, render } from 'astro:content';
+import ArticleCard from '../../components/ArticleCard.astro';
+import ArticleLayout from '../../layouts/ArticleLayout.astro';
+
+export async function getStaticPaths() {
+	const entries = await getCollection('errors');
+	return entries.map((entry) => ({
+		params: { slug: entry.data.slug },
+		props: { entry },
+	}));
+}
+
+const { entry } = Astro.props as {
+	entry: Awaited<ReturnType<typeof getCollection<'errors'>>>[number];
+};
+
+const { Content, headings } = await render(entry);
+const relatedEntries = (await getCollection('errors')).filter(
+	(candidate) =>
+		candidate.data.slug !== entry.data.slug && entry.data.related.includes(candidate.data.slug),
+);
+---
+
+<ArticleLayout
+	title={entry.data.title}
+	description={entry.data.description}
+	publishedAt={entry.data.publishedAt}
+	tags={entry.data.tags}
+	headings={headings}
+>
+	<Content />
+
+	{
+		relatedEntries.length > 0 && (
+			<section class="section">
+				<div class="section-heading">
+					<div>
+						<h2>Related errors</h2>
+						<p>Move laterally when the first symptom points to adjacent network failures.</p>
+					</div>
+				</div>
+				<div class="grid">
+					{relatedEntries.map((candidate) => (
+						<ArticleCard
+							title={candidate.data.title}
+							description={candidate.data.description}
+							href={`/errors/${candidate.data.slug}/`}
+							meta="Related guide"
+							tags={candidate.data.tags}
+						/>
+					))}
+				</div>
+			</section>
+		)
+	}
+</ArticleLayout>

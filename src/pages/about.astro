@@ -1,0 +1,33 @@
+---
+import BaseLayout from '../layouts/BaseLayout.astro';
+---
+
+<BaseLayout
+	title="About | Ops Error Atlas"
+	description="Learn what Ops Error Atlas is for and why it focuses on concrete backend and network failures."
+>
+	<section class="page-hero section-inner">
+		<h1 class="page-title">About</h1>
+		<p class="page-intro">
+			Ops Error Atlas is a small technical site focused on explaining backend and network
+			errors clearly. The goal is simple: help engineers understand issues faster and reduce
+			time spent guessing.
+		</p>
+	</section>
+	<section class="section section-inner">
+		<div class="text-panel rich-copy">
+			<h2>Editorial scope</h2>
+			<p>
+				Each guide focuses on one error or one failure pattern. The site is intentionally
+				narrow because production troubleshooting works better when the diagnosis starts from a
+				concrete symptom.
+			</p>
+			<h2>What you can expect</h2>
+			<ul>
+				<li>Plain-English explanations for backend and network failures</li>
+				<li>Short diagnosis sequences instead of broad tutorials</li>
+				<li>Command examples that are realistic for Linux-based systems</li>
+			</ul>
+		</div>
+	</section>
+</BaseLayout>

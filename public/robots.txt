@@ -1,0 +1,4 @@
+User-agent: *
+Allow: /
+
+Sitemap: https://ops-error-atlas.pages.dev/sitemap-index.xml

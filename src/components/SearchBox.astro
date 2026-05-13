@@ -1,0 +1,47 @@
+---
+type SearchItem = {
+	title: string;
+	href: string;
+};
+
+const { items = [] } = Astro.props as { items?: SearchItem[] };
+---
+
+<section class="search-panel" aria-labelledby="search-heading">
+	<div class="search-header">
+		<h2 id="search-heading">Find an error guide</h2>
+		<p>Start with a concrete error message. Keep the query short and exact.</p>
+	</div>
+	<label class="search-label" for="guide-search">Search error guides</label>
+	<input id="guide-search" class="search-input" type="search" placeholder='Try "connection refused"' />
+	<ul id="search-results" class="search-results">
+		{
+			items.map((item) => (
+				<li data-title={item.title.toLowerCase()}>
+					<a href={item.href}>{item.title}</a>
+				</li>
+			))
+		}
+	</ul>
+</section>
+
+<script define:vars={{ items }}>
+	const search = document.querySelector('#guide-search');
+	const list = document.querySelector('#search-results');
+	const allItems = items;
+
+	if (search instanceof HTMLInputElement && list instanceof HTMLUListElement) {
+		const rows = Array.from(list.querySelectorAll('li'));
+		search.addEventListener('input', () => {
+			const query = search.value.trim().toLowerCase();
+			const filtered = allItems.filter((item) => item.title.toLowerCase().includes(query));
+
+			rows.forEach((row) => {
+				const title = row.getAttribute('data-title') ?? '';
+				row.hidden = query.length > 0 && !title.includes(query);
+			});
+
+			list.dataset.state = filtered.length === 0 ? 'empty' : 'ready';
+		});
+	}
+</script>

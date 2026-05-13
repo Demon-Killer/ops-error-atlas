@@ -1,0 +1,122 @@
+---
+import BaseLayout from '../layouts/BaseLayout.astro';
+import { errorRules } from '../data/errorRules';
+---
+
+<BaseLayout
+	title="Error Explainer | Ops Error Atlas"
+	description="Paste a backend or network error message and get a plain-English explanation with likely causes and next commands."
+>
+	<section class="page-hero section-inner">
+		<div class="tool-shell">
+			<h1>Error Explainer</h1>
+			<p class="tool-intro">
+				Paste a backend or network error message and get a plain-English explanation. The
+				first release uses a practical local ruleset, not an external model.
+			</p>
+			<form class="tool-form" id="tool-form">
+				<label for="error-input">Paste an error message here</label>
+				<textarea
+					class="tool-textarea"
+					id="error-input"
+					name="error"
+					rows="7"
+					placeholder='Example: curl: (28) Operation timed out after 5000 milliseconds with 0 bytes received'
+				></textarea>
+				<div class="button-row">
+					<button class="button button-primary" type="submit">Explain Error</button>
+					<button class="button button-secondary" id="load-sample" type="button">Load sample</button>
+				</div>
+			</form>
+
+			<section class="tool-output" id="tool-output" aria-live="polite">
+				<h2 id="tool-title">Likely explanation</h2>
+				<dl>
+					<dt>Likely category</dt>
+					<dd id="tool-category"></dd>
+					<dt>What it probably means</dt>
+					<dd id="tool-meaning"></dd>
+					<dt>Common causes</dt>
+					<dd id="tool-causes"></dd>
+					<dt>What to try next</dt>
+					<dd id="tool-commands"></dd>
+				</dl>
+			</section>
+
+			<div class="hero-highlights">
+				<span class="note-chip">Local rules only</span>
+				<span class="note-chip">Fast feedback</span>
+				<span class="note-chip">Verification still required</span>
+			</div>
+			<p class="muted">
+				This tool gives practical guidance, not guaranteed root-cause analysis. Always verify
+				with logs, metrics, and packet captures.
+			</p>
+		</div>
+	</section>
+</BaseLayout>
+
+<script define:vars={{ rules: errorRules }}>
+	const form = document.querySelector('#tool-form');
+	const output = document.querySelector('#tool-output');
+	const input = document.querySelector('#error-input');
+	const loadSample = document.querySelector('#load-sample');
+
+	const titleEl = document.querySelector('#tool-title');
+	const categoryEl = document.querySelector('#tool-category');
+	const meaningEl = document.querySelector('#tool-meaning');
+	const causesEl = document.querySelector('#tool-causes');
+	const commandsEl = document.querySelector('#tool-commands');
+
+	const sampleValue =
+		'2026-05-13T09:41:17Z curl: (28) Operation timed out after 5000 milliseconds with 0 bytes received';
+
+	const renderList = (items) =>
+		items.map((item) => `<div><code>${item}</code></div>`).join('');
+
+	const renderCauses = (items) => `<ul>${items.map((item) => `<li>${item}</li>`).join('')}</ul>`;
+
+	const renderResult = (rule, state = 'ready') => {
+		if (!output || !titleEl || !categoryEl || !meaningEl || !causesEl || !commandsEl) {
+			return;
+		}
+
+		output.dataset.state = state;
+		titleEl.textContent = rule.title;
+		categoryEl.textContent = rule.category;
+		meaningEl.textContent = rule.meaning;
+		causesEl.innerHTML = renderCauses(rule.causes);
+		commandsEl.innerHTML = renderList(rule.commands);
+	};
+
+	const fallback = {
+		title: 'No direct match yet',
+		category: 'Unknown error pattern',
+		meaning:
+			'This message does not match the starter ruleset. Narrow it down to the concrete network, timeout, TLS, or socket error string first.',
+		causes: [
+			'The message is too broad and contains multiple errors at once.',
+			'The real root cause appears in another log line before or after this one.',
+			'The current ruleset does not cover this family of errors yet.',
+		],
+		commands: ['grep -i "<keyword>" <logfile>', 'journalctl -xe --since -15m', 'ss -tanp'],
+	};
+
+	if (loadSample instanceof HTMLButtonElement && input instanceof HTMLTextAreaElement) {
+		loadSample.addEventListener('click', () => {
+			input.value = sampleValue;
+			input.focus();
+		});
+	}
+
+	if (form instanceof HTMLFormElement && input instanceof HTMLTextAreaElement) {
+		form.addEventListener('submit', (event) => {
+			event.preventDefault();
+			const value = input.value.trim().toLowerCase();
+			const rule = rules.find((candidate) =>
+				candidate.matchers.some((matcher) => value.includes(matcher)),
+			);
+			renderResult(rule ?? fallback, rule ? 'ready' : 'fallback');
+		});
+	}
+</script>

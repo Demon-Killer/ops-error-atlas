@@ -1,0 +1,31 @@
+---
+const navItems = [
+	{ href: '/', label: 'Home' },
+	{ href: '/errors/', label: 'Error Guides' },
+	{ href: '/tool/', label: 'Error Explainer' },
+	{ href: '/about/', label: 'About' },
+];
+---
+
+<header class="site-header">
+	<div class="inner">
+		<a class="brand" href="/">
+			<span class="brand-mark">OE</span>
+			<span class="brand-copy">
+				<strong>Ops Error Atlas</strong>
+				<small>Backend and network error guides</small>
+			</span>
+		</a>
+		<nav aria-label="Primary">
+			<ul>
+				{
+					navItems.map((item) => (
+						<li>
+							<a href={item.href}>{item.label}</a>
+						</li>
+					))
+				}
+			</ul>
+		</nav>
+	</div>
+</header>

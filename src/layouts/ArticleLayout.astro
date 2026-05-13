@@ -1,0 +1,64 @@
+---
+import BaseLayout from './BaseLayout.astro';
+
+type Heading = {
+	depth: number;
+	slug: string;
+	text: string;
+};
+
+type Props = {
+	title: string;
+	description: string;
+	publishedAt: Date;
+	tags: string[];
+	headings: Heading[];
+};
+
+const { title, description, publishedAt, tags, headings } = Astro.props as Props;
+const publishedLabel = publishedAt.toLocaleDateString('en-US', {
+	year: 'numeric',
+	month: 'short',
+	day: 'numeric',
+});
+const visibleHeadings = headings.filter((heading) => heading.depth <= 2);
+---
+
+<BaseLayout title={`${title} | Ops Error Atlas`} description={description}>
+	<section class="page-hero section-inner">
+		<div class="article-hero">
+			<div class="tag-row">
+				{tags.map((tag) => <span class="tag">{tag}</span>)}
+			</div>
+			<h1>{title}</h1>
+			<p>{description}</p>
+			<div class="hero-highlights">
+				<span class="note-chip">Published {publishedLabel}</span>
+				<span class="note-chip">One error per page</span>
+				<span class="note-chip">Commands included</span>
+			</div>
+		</div>
+	</section>
+	<section class="section-inner">
+		<div class="article-shell">
+			<article class="rich-copy">
+				<slot />
+			</article>
+			<aside class="article-toc" aria-label="Table of contents">
+				<div class="article-summary">
+					<strong>On this page</strong>
+					<span class="muted">Start with diagnosis before changing configs.</span>
+				</div>
+				<ul>
+					{
+						visibleHeadings.map((heading) => (
+							<li>
+								<a href={`#${heading.slug}`}>{heading.text}</a>
+							</li>
+						))
+					}
+				</ul>
+			</aside>
+		</div>
+	</section>
+</BaseLayout>

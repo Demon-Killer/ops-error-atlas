@@ -1,11 +1,133 @@
 ---
-import Welcome from '../components/Welcome.astro';
-import Layout from '../layouts/Layout.astro';
+import { getCollection } from 'astro:content';
+import ArticleCard from '../components/ArticleCard.astro';
+import SearchBox from '../components/SearchBox.astro';
+import BaseLayout from '../layouts/BaseLayout.astro';
 
-// Welcome to Astro! Wondering what to do next? Check out the Astro documentation at https://docs.astro.build
-// Don't want to use any of this? Delete everything in this file, the `assets`, `components`, and `layouts` directories, and start fresh.
+const entries = (await getCollection('errors')).sort(
+	(a, b) => b.data.publishedAt.getTime() - a.data.publishedAt.getTime(),
+);
+const popular = entries.filter((entry) => entry.data.popular).slice(0, 3);
+const latest = entries.slice(0, 6);
+const searchItems = entries.map((entry) => ({
+	title: entry.data.title,
+	href: `/errors/${entry.data.slug}/`,
+}));
 ---
 
-<Layout>
-	<Welcome />
-</Layout>
+<BaseLayout
+	title="Ops Error Atlas | Explain backend and network errors in plain English"
+	description="Ops Error Atlas helps engineers understand Linux, TCP, Nginx, cURL, TLS, and timeout errors faster."
+>
+	<section class="hero section-inner">
+		<div class="hero-panel">
+			<div class="hero-copy">
+				<div class="tag-row">
+					<span class="tag">Linux</span>
+					<span class="tag">TCP</span>
+					<span class="tag">Nginx</span>
+					<span class="tag">TLS</span>
+					<span class="tag">Timeouts</span>
+				</div>
+				<h1>Explain backend and network errors in plain English</h1>
+				<p>
+					Ops Error Atlas turns common production errors into concise guides with probable
+					causes, diagnosis steps, and shell commands worth trying first.
+				</p>
+				<div class="button-row">
+					<a class="button button-primary" href="/errors/">Browse Common Errors</a>
+					<a class="button button-secondary" href="/tool/">Try Error Explainer</a>
+				</div>
+				<div class="hero-highlights">
+					<span class="stat-chip">One page per error</span>
+					<span class="stat-chip">Short diagnosis steps</span>
+					<span class="stat-chip">Shell commands included</span>
+				</div>
+			</div>
+			<div class="hero-aside">
+				<ul class="metrics-grid">
+					<li>
+						<strong>{entries.length}</strong>
+						<span>Starter guides ready</span>
+					</li>
+					<li>
+						<strong>10</strong>
+						<span>Tool rules in the first build</span>
+					</li>
+					<li>
+						<strong>1 week</strong>
+						<span>Reasonable launch window</span>
+					</li>
+				</ul>
+			</div>
+		</div>
+	</section>
+
+	<section class="section section-inner">
+		<div class="section-heading">
+			<div>
+				<h2>Popular Error Guides</h2>
+				<p>Start with the production failures engineers search most often.</p>
+			</div>
+			<a class="button button-secondary" href="/errors/">See all guides</a>
+		</div>
+		<div class="grid">
+			{
+				popular.map((entry) => (
+					<ArticleCard
+						title={entry.data.title}
+						description={entry.data.description}
+						href={`/errors/${entry.data.slug}/`}
+						meta="Popular guide"
+						tags={entry.data.tags}
+					/>
+				))
+			}
+		</div>
+	</section>
+
+	<section class="section section-inner">
+		<SearchBox items={searchItems} />
+	</section>
+
+	<section class="section section-inner">
+		<div class="section-heading">
+			<div>
+				<h2>Latest Guides</h2>
+				<p>Focused writeups that explain what the error means and what to try next.</p>
+			</div>
+		</div>
+		<div class="grid">
+			{
+				latest.map((entry) => (
+					<ArticleCard
+						title={entry.data.title}
+						description={entry.data.description}
+						href={`/errors/${entry.data.slug}/`}
+						meta={entry.data.publishedAt.toLocaleDateString('en-US', {
+							month: 'short',
+							day: 'numeric',
+							year: 'numeric',
+						})}
+						tags={entry.data.tags}
+					/>
+				))
+			}
+		</div>
+	</section>
+
+	<section class="section section-inner">
+		<div class="text-panel">
+			<div class="section-heading">
+				<div>
+					<h2>Paste an error. Get the likely meaning and next steps.</h2>
+					<p>
+						The first release of the Error Explainer uses a local ruleset, not a large
+						model, so results stay narrow and fast.
+					</p>
+				</div>
+				<a class="button button-primary" href="/tool/">Open the tool</a>
+			</div>
+		</div>
+	</section>
+</BaseLayout>

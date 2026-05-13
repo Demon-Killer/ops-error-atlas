@@ -1,0 +1,51 @@
+---
+import { getCollection } from 'astro:content';
+import ArticleCard from '../../components/ArticleCard.astro';
+import SearchBox from '../../components/SearchBox.astro';
+import BaseLayout from '../../layouts/BaseLayout.astro';
+
+const entries = (await getCollection('errors')).sort(
+	(a, b) => b.data.publishedAt.getTime() - a.data.publishedAt.getTime(),
+);
+const searchItems = entries.map((entry) => ({
+	title: entry.data.title,
+	href: `/errors/${entry.data.slug}/`,
+}));
+---
+
+<BaseLayout
+	title="Error Guides | Ops Error Atlas"
+	description="Browse focused guides for backend, Linux, TCP, Nginx, TLS, and timeout errors."
+>
+	<section class="page-hero section-inner">
+		<h1 class="page-title">Error Guides</h1>
+		<p class="page-intro">
+			Each page explains one concrete backend or network error, the common causes behind it,
+			and the first commands worth running.
+		</p>
+	</section>
+
+	<section class="section section-inner">
+		<SearchBox items={searchItems} />
+	</section>
+
+	<section class="section section-inner">
+		<div class="grid">
+			{
+				entries.map((entry) => (
+					<ArticleCard
+						title={entry.data.title}
+						description={entry.data.description}
+						href={`/errors/${entry.data.slug}/`}
+						meta={entry.data.publishedAt.toLocaleDateString('en-US', {
+							month: 'short',
+							day: 'numeric',
+							year: 'numeric',
+						})}
+						tags={entry.data.tags}
+					/>
+				))
+			}
+		</div>
+	</section>
+</BaseLayout>

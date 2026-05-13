@@ -1,0 +1,21 @@
+---
+type Props = {
+	title: string;
+	description: string;
+	href: string;
+	meta?: string;
+	tags?: string[];
+};
+
+const { title, description, href, meta, tags = [] } = Astro.props;
+---
+
+<article class="card">
+	<div class="card-meta">
+		{meta && <span>{meta}</span>}
+		{tags.length > 0 && <span>{tags.slice(0, 2).join(' · ')}</span>}
+	</div>
+	<h3><a href={href}>{title}</a></h3>
+	<p>{description}</p>
+	<a class="card-link" href={href}>Read guide</a>
+</article>
