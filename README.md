@@ -135,7 +135,6 @@ You can keep this free subdomain for testing before buying a custom domain.
 
 Replace these placeholders first:
 
-- `your-email@example.com` in `src/pages/contact.astro`
 - the site URL in `astro.config.mjs` if your final `pages.dev` project name differs
 
 ## Before AdSense preparation
@@ -153,7 +152,6 @@ Do not apply too early. First reach:
 - No custom domain yet
 - No analytics snippet yet
 - Only 5 articles so far
-- Contact email is still a placeholder
 
 ## Suggested next step
 
