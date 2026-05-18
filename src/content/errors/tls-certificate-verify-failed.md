@@ -10,6 +10,7 @@ tags:
 related:
   - tls-handshake-failure
   - curl-28-operation-timed-out
+  - x509-certificate-signed-by-unknown-authority
 ---
 
 `certificate verify failed` means the client could not validate the server certificate against its trust rules. In practice, this usually comes from an incomplete certificate chain, a hostname mismatch, an expired certificate, or a missing CA in the local trust store.

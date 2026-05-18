@@ -7,7 +7,17 @@ import BaseLayout from '../layouts/BaseLayout.astro';
 const entries = (await getCollection('errors')).sort(
 	(a, b) => b.data.publishedAt.getTime() - a.data.publishedAt.getTime(),
 );
-const popular = entries.filter((entry) => entry.data.popular).slice(0, 3);
+const deepDiveSlugs = [
+	'nginx-504-gateway-timeout',
+	'upstream-prematurely-closed-connection',
+	'x509-certificate-signed-by-unknown-authority',
+];
+const deepDiveEntries = deepDiveSlugs
+	.map((slug) => entries.find((entry) => entry.data.slug === slug))
+	.filter(Boolean);
+const popular = entries
+	.filter((entry) => entry.data.popular && !deepDiveSlugs.includes(entry.data.slug))
+	.slice(0, 3);
 const latest = entries.slice(0, 6);
 const searchItems = entries.map((entry) => ({
 	title: entry.data.title,
@@ -60,6 +70,29 @@ const searchItems = entries.map((entry) => ({
 					</li>
 				</ul>
 			</div>
+		</div>
+	</section>
+
+	<section class="section section-inner">
+		<div class="section-heading">
+			<div>
+				<h2>Deep Troubleshooting Guides</h2>
+				<p>Start with guides that include diagnosis flow, commands, and common traps.</p>
+			</div>
+			<a class="button button-secondary" href="/errors/">Browse all guides</a>
+		</div>
+		<div class="grid">
+			{
+				deepDiveEntries.map((entry) => (
+					<ArticleCard
+						title={entry.data.title}
+						description={entry.data.description}
+						href={`/errors/${entry.data.slug}/`}
+						meta="Deep guide"
+						tags={entry.data.tags}
+					/>
+				))
+			}
 		</div>
 	</section>
 

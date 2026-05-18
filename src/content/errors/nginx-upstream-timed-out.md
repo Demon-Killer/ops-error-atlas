@@ -10,6 +10,8 @@ tags:
 related:
   - curl-28-operation-timed-out
   - connection-reset-by-peer
+  - nginx-504-gateway-timeout
+  - upstream-prematurely-closed-connection
 popular: true
 ---
 

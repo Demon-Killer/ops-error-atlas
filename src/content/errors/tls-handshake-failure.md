@@ -10,6 +10,7 @@ tags:
 related:
   - curl-28-operation-timed-out
   - connection-reset-by-peer
+  - x509-certificate-signed-by-unknown-authority
 ---
 
 `TLS handshake failure` means the client and server could not complete cryptographic negotiation before any application data moved. The failure is often caused by certificate problems, protocol mismatches, SNI issues, or unsupported cipher suites.

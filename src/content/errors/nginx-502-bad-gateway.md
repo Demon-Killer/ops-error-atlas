@@ -10,6 +10,8 @@ tags:
 related:
   - nginx-upstream-timed-out
   - connection-refused
+  - upstream-prematurely-closed-connection
+  - nginx-504-gateway-timeout
 ---
 
 `502 Bad Gateway` from Nginx usually means Nginx could talk to the client but failed to get a valid upstream response. The failure can come from an unavailable upstream, a protocol mismatch, or a response that Nginx could not accept.
