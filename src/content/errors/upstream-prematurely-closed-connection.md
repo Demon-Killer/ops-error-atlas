@@ -1,6 +1,6 @@
 ---
 title: 'Why "upstream prematurely closed connection" happens in Nginx'
-description: Learn what upstream prematurely closed connection means in Nginx and how to tell whether the app, proxy, or transport layer ended the response first.
+description: A practical guide to Nginx upstream prematurely closed connection errors, focused on proving whether the app, proxy, keepalive reuse, or transport layer closed first.
 slug: upstream-prematurely-closed-connection
 publishedAt: 2026-05-14
 tags:
@@ -11,195 +11,204 @@ related:
   - nginx-502-bad-gateway
   - connection-reset-by-peer
   - broken-pipe
+  - nginx-504-gateway-timeout
 popular: true
 ---
 
-`upstream prematurely closed connection` in Nginx means the upstream side closed the connection before Nginx received the full response it expected. In practice, the upstream may have crashed, timed out internally, sent an invalid response, or reset the stream under pressure. The hard part is not understanding the sentence. The hard part is proving **who closed first and why**.
+`upstream prematurely closed connection` in Nginx means the upstream side closed the connection before Nginx received the full response it expected. The useful question is not just "what does this mean?" The useful question is: **who closed first, at what phase, and under what load pattern?**
 
 ## What it means
 
-Nginx opened or reused a connection to the upstream service, started reading the response, and then saw the stream end too early. That early end may appear as a clean close (`FIN`) or an abrupt reset (`RST`) depending on the failure mode.
+Nginx connected to an upstream service, sent or started sending a request, and then the upstream connection ended earlier than expected. Depending on the exact failure, the error may appear while Nginx is:
 
-This error often turns into:
+- connecting to upstream;
+- sending the request to upstream;
+- reading response headers;
+- reading the response body.
 
-- `502 Bad Gateway`
-- partial responses
-- intermittent client failures
+The Nginx error log phrase often includes that phase. Do not ignore it.
 
-## Common causes
+## Why it often becomes a 502
 
-- The upstream application crashed or restarted mid-request.
-- The upstream hit its own timeout and aborted the response.
-- The upstream process returned malformed headers or incomplete body data.
-- A proxy or load balancer between Nginx and the app closed the connection.
-- Keep-alive reuse exposed an app that does not handle persistent connections cleanly.
+This error commonly produces `502 Bad Gateway` because Nginx cannot return a valid upstream response to the client. The upstream may have:
+
+- crashed;
+- restarted during deploy;
+- closed an idle keepalive connection;
+- timed out internally;
+- returned malformed headers;
+- aborted while streaming a response body.
 
 ## First question: who closed first?
 
-This error is much easier to reason about when you answer that question first.
+Think in three layers:
 
-There are usually three broad cases:
+```text
+Nginx -> load balancer or service mesh -> upstream app -> downstream dependency
+```
 
-### Case 1: The app closed first
+The component that logs the error is not always the component that caused it.
 
-Most likely when:
-
-- the app crashes
-- the app times out internally
-- the app aborts the request after a downstream failure
-
-### Case 2: An intermediate proxy closed first
-
-Most likely when:
-
-- there is a load balancer between Nginx and the app
-- keepalive and idle timeouts do not match
-- one hop in the middle has a shorter timeout than the rest
-
-### Case 3: Nginx reused a connection the upstream no longer considered healthy
-
-Most likely when:
-
-- keepalive behavior is inconsistent
-- one instance closes idle connections aggressively
-- only reused upstream connections fail, while new ones succeed
+| Observation | Likely direction |
+| --- | --- |
+| App logs show panic, crash, or restart | Upstream app closed first |
+| Only reused connections fail | Keepalive or idle timeout mismatch |
+| Only one upstream instance fails | Bad node, bad deploy, or host pressure |
+| Large responses fail more often | Streaming, buffering, or slow client path |
+| Failure appears during deploys | Missing graceful shutdown or draining |
+| Packet capture shows upstream `RST` | Upstream or middle proxy reset the connection |
 
 ## How to diagnose it
 
-### 1. Start with Nginx error log lines
+### 1. Start from the exact Nginx error
 
 ```bash
-tail -100 /var/log/nginx/error.log
-journalctl -u nginx --since -15m
+tail -200 /var/log/nginx/error.log
+journalctl -u nginx --since -30m
 ```
 
-Look for:
+Preserve the full line. These details matter:
 
-- the full error line
-- upstream host and port
-- request path
-- whether the failure happens before headers or mid-body
+- upstream address;
+- request path;
+- whether the error happened while reading headers or body;
+- timestamp;
+- client request method;
+- response size if available in access logs.
 
-### 2. Compare with upstream app logs
+### 2. Match the same request in app logs
 
-At the same timestamp, ask:
+At the same timestamp, check:
 
-- did the app receive the request?
-- did it finish normally?
-- did it log a crash, panic, timeout, or broken downstream call?
+- Did the app receive the request?
+- Did the handler finish?
+- Was there a panic, exception, worker restart, OOM kill, or deploy?
+- Did the app call a slow dependency and abort?
 
-If the app never saw the request, the failure may be earlier in the path. If it saw the request but died before responding, the app is a stronger suspect.
+If the app never saw the request, inspect routing, service discovery, load balancer, and connection reuse. If the app saw it and died before response completion, the upstream app is the primary suspect.
 
-### 3. Test direct upstream behavior
+### 3. Compare fresh and reused connections
 
 ```bash
 curl -v http://upstream-service:port/path
 curl -H 'Connection: close' -v http://upstream-service:port/path
 ```
 
-Comparing normal and `Connection: close` requests can help expose keepalive-specific issues.
+If forcing `Connection: close` reduces the failure rate, suspect keepalive reuse or idle timeout mismatch.
 
-### 4. Inspect connection behavior
-
-```bash
-ss -tanp
-tcpdump -nn host <upstream-ip>
-```
-
-What to look for in packet captures:
-
-- `FIN` from upstream: more graceful close
-- `RST` from upstream: more abrupt failure
-- repeated closes only on reused keepalive connections
-
-### 5. Check keepalive and timeout alignment
+### 4. Inspect Nginx upstream and keepalive settings
 
 ```bash
-nginx -T
+nginx -T | grep -E 'upstream|keepalive|proxy_http_version|proxy_set_header|timeout'
 ```
 
-Pay attention to:
+Check whether Nginx, the upstream app server, and any middle proxy agree on:
 
-- upstream keepalive settings
-- idle timeout settings on every hop
-- app server keepalive behavior
+- idle timeout;
+- keepalive support;
+- HTTP version;
+- connection draining during deploys.
 
-## Common high-value checks
+### 5. Use packet capture when logs disagree
 
-### Check whether only one upstream node fails
+```bash
+tcpdump -nn -i any host <upstream-ip> and port <upstream-port>
+ss -tanp | grep '<upstream-port>'
+```
 
-If only one instance closes early, compare that node’s:
+In a capture:
 
-- CPU usage
-- memory pressure
-- restart count
-- app version
-- timeout settings
+- `FIN` from upstream usually means a graceful close;
+- `RST` from upstream means an abrupt reset;
+- repeated failures after idle periods point toward keepalive mismatch;
+- resets during deploy windows point toward missing draining or forced restarts.
 
-### Check whether large responses fail more often
+## High-value checks
 
-If yes, suspect:
+### Check whether one node is responsible
 
-- upstream body streaming issues
-- proxy buffering behavior
-- client or proxy timeouts
-- app-side aborts during slow writes
+If only one upstream address appears in error logs, compare that instance against healthy ones:
 
-### Check whether failures cluster around deploys
+- CPU and memory;
+- restart count;
+- app version;
+- file descriptor usage;
+- dependency latency;
+- kernel network counters.
 
-If yes, suspect:
+### Check whether the failure is response-size dependent
 
-- rolling restart timing
-- connection draining not configured correctly
-- old and new app versions disagreeing on protocol behavior
+If small responses succeed but large responses fail, inspect:
+
+- streaming code paths;
+- proxy buffering;
+- chunked responses;
+- slow downstream clients;
+- app-side write timeouts.
+
+### Check deploy and restart timing
+
+If errors cluster around deploys, inspect:
+
+- graceful shutdown;
+- connection draining;
+- load balancer deregistration delay;
+- app worker termination policy.
+
+This is a common source of intermittent upstream close errors.
 
 ## What not to assume
 
-- Do not assume Nginx is the root cause just because it logged the error.
-- Do not assume every early close is a network failure.
-- Do not assume every `502` is caused by invalid headers. Early closes are common too.
+- Do not assume Nginx is broken because it logged the error.
+- Do not assume every early close is a network problem.
+- Do not fix it by blindly raising proxy timeouts.
+- Do not ignore deploy windows and keepalive behavior.
 
 ## How to fix it
 
-### If the app is crashing or aborting
+### If the app crashes or aborts
 
-- fix the exception or panic path
-- inspect downstream timeouts
-- verify graceful shutdown during deploys
+- fix the exception path;
+- inspect OOM kills and worker restarts;
+- make downstream dependency timeouts explicit;
+- ensure partial responses are handled safely.
 
 ### If keepalive reuse is the trigger
 
-- align app and Nginx keepalive behavior
-- test disabling keepalive temporarily to confirm the theory
+- align idle timeouts across Nginx, load balancer, and app server;
+- test disabling upstream keepalive temporarily to confirm the theory;
+- ensure the app server handles persistent connections correctly.
 
-### If an intermediate proxy closes idle streams
+### If deploys trigger the error
 
-- align timeout values across all hops
-- verify connection draining and idle timeout policy
+- add graceful shutdown;
+- stop accepting new requests before terminating workers;
+- drain load balancer targets before killing old processes.
 
-### If malformed or partial responses are the trigger
+### If malformed responses are the trigger
 
-- inspect header generation
-- inspect streaming or chunked response paths
-- compare healthy and failing payloads
+- inspect response headers;
+- check chunked transfer encoding;
+- compare failing and successful responses with `curl -v`.
 
-## FAQ
+## Related errors and how they differ
 
-### Is this the same as `connection reset by peer`?
+### `connection reset by peer`
 
-Not exactly. They are related. `connection reset by peer` is a transport-level symptom. `upstream prematurely closed connection` is Nginx’s higher-level interpretation of an unexpectedly early upstream close.
+A transport-level symptom. Nginx may report it when the peer sends an abrupt reset.
 
-### Why does it happen only under load?
+### `broken pipe`
 
-Because load exposes concurrency limits, timeout races, keepalive reuse issues, and app shutdown edge cases that may never appear in single-request testing.
+Usually means a process tried to write to a connection the other side already closed.
 
-### Should I restart Nginx first?
+### `502 Bad Gateway`
 
-No. Restarting Nginx may clear symptoms temporarily but hides whether the upstream, transport path, or keepalive policy is the real issue.
+Often the client-facing status produced after Nginx fails to get a valid upstream response.
 
 ## Short checklist
 
-- Check whether the app logged the request and how it ended
-- Compare reused and fresh upstream connections
-- Capture packets if you need to prove who closed first
-- Check one-node-only failures before touching global timeout settings
+- Keep the full Nginx error line, including the phase.
+- Match the same request in upstream app logs.
+- Check whether failures cluster by node, deploy, response size, or keepalive reuse.
+- Use packet capture only when logs cannot prove who closed first.
+- Fix app shutdown, keepalive alignment, or malformed responses before touching global timeouts.

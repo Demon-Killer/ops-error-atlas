@@ -1,6 +1,6 @@
 ---
 title: 'How to debug "x509: certificate signed by unknown authority"'
-description: A practical guide to x509 unknown authority errors that separates server chain problems from client trust-store gaps, especially in containers and internal services.
+description: A practical x509 unknown authority guide that separates incomplete server chains, missing client trust stores, internal CAs, containers, and runtime-specific TLS behavior.
 slug: x509-certificate-signed-by-unknown-authority
 publishedAt: 2026-05-14
 tags:
@@ -13,154 +13,183 @@ related:
 popular: true
 ---
 
-`x509: certificate signed by unknown authority` means the client cannot build a trusted path from the server certificate to a certificate authority it accepts. The mistake many people make is assuming this is always a server problem. Sometimes it is. Sometimes the server sends an incomplete chain. But sometimes the client trust store is missing the right CA, especially inside containers, internal networks, or custom runtimes.
+`x509: certificate signed by unknown authority` means the client cannot build a trusted certificate path from the server certificate to a certificate authority it accepts. The mistake is assuming this is always a server problem. Sometimes the server sends an incomplete chain. Sometimes the client trust store is missing a private CA. Sometimes the application runtime is not using the trust store you updated.
 
 ## What it means
 
-The client received a certificate chain it does not trust enough to continue. That usually means one of these:
+During the TLS handshake, the server presents a certificate chain. The client then tries to verify that chain against its trusted root certificates.
 
-- the server sent an incomplete chain
-- the CA is not trusted by the client
-- the certificate is self-signed or signed by a private CA
-- the client runtime is using a different trust store than you expected
+The error means one of these is true:
 
-## Common causes
-
-- The server omits an intermediate certificate.
-- The service uses an internal CA that is not installed on the client.
-- A container image has an outdated or minimal CA bundle.
-- A programming runtime uses its own trust store instead of the OS bundle.
-- A developer “fixed” the cert path on one host but not in the actual deployment environment.
-
-## Why this error is easy to misdiagnose
-
-Because people often test from one place and deploy from another:
-
-- browser works, container fails
-- host works, application runtime fails
-- one language SDK works, another fails
-
-That usually means the trust decision differs by environment, not that the certificate is randomly broken.
+- the server certificate is self-signed and not trusted by the client;
+- the server omitted an intermediate certificate;
+- the certificate is signed by a private/internal CA that the client does not trust;
+- the client has an outdated or minimal CA bundle;
+- the app runtime uses a different trust store than your shell command.
 
 ## Fast diagnosis order
 
+Use this order to avoid changing the wrong side:
+
 1. Inspect the certificate chain the server actually sends.
-2. Identify which client environment fails.
-3. Compare that failing environment’s trust store with a working one.
-4. Only then decide whether the fix belongs on the server or the client.
+2. Reproduce the failure in the exact runtime that fails.
+3. Compare a working client with the failing client.
+4. Decide whether the fix belongs on the server chain or the client trust store.
+5. Avoid any permanent fix that disables verification.
 
-## Commands to try
+## Inspect the server certificate chain
 
-### Inspect the full chain the server presents
+Run this from a clean client environment:
 
 ```bash
 openssl s_client -connect <host>:443 -servername <host> -showcerts
 ```
 
-This tells you what the server really sends on the wire, not what you think it should send.
+Check:
 
-### Test with curl
+- how many certificates the server sends;
+- whether the leaf certificate matches the hostname;
+- whether the intermediate certificate is present;
+- whether the issuer is public, private, or self-signed.
+
+If the server sends only the leaf certificate when an intermediate is required, fix the server chain first.
+
+## Verify with curl
 
 ```bash
 curl -v https://<host>
 ```
 
-If curl fails on one machine but succeeds on another, compare trust stores before changing the certificate.
+Useful differences:
 
-### Inspect a local CA bundle
+- `curl` fails everywhere: likely server chain or private CA distribution problem.
+- `curl` works on host but fails in container: likely container CA bundle problem.
+- `curl` works but app fails: likely runtime-specific trust configuration.
 
-```bash
-ls -l /etc/ssl/certs
-grep -R "<your CA name>" /etc/ssl/certs
-```
+## Server-side vs client-side signs
 
-### In containers
+| Signal | Likely cause |
+| --- | --- |
+| Many independent clients fail | Server chain is incomplete or CA is private |
+| Browser works but container fails | Container trust store is missing CA certificates |
+| Host works but app fails | Runtime or app-specific trust store |
+| Only internal domains fail | Internal CA is not distributed everywhere |
+| `openssl s_client` shows missing intermediate | Server did not send the full chain |
+
+## Container checks
+
+Minimal images often lack a full CA bundle. Test inside the real image, not only on your laptop.
 
 ```bash
 docker run --rm -it <image> sh
-apk info ca-certificates || dpkg -l | grep ca-certificates
 curl -v https://<host>
+ls -l /etc/ssl/certs
 ```
 
-The point is to test **inside the real runtime**, not just on your laptop.
+On Alpine-based images:
 
-## How to tell whether it is a server-side or client-side problem
+```bash
+apk add --no-cache ca-certificates
+update-ca-certificates
+```
 
-### Strong signs it is a server-side chain problem
+On Debian or Ubuntu-based images:
 
-- multiple standard clients fail
-- `openssl s_client -showcerts` shows a missing intermediate
-- browsers warn too, not just one CLI tool
+```bash
+apt-get update
+apt-get install -y ca-certificates
+update-ca-certificates
+```
 
-### Strong signs it is a client-side trust problem
+For internal CAs, copy the CA certificate into the image intentionally and rebuild the trust bundle. Do not rely on the host trust store unless the application actually runs on the host.
 
-- one environment works and another fails
-- internal CA is expected but not installed everywhere
-- minimal container images fail while full host OS succeeds
+## Runtime-specific checks
 
-## High-value environment-specific checks
+Some runtimes or SDKs may use their own trust configuration or allow overriding the CA file. If command-line `curl` works but the application fails, inspect the application runtime.
 
-### Linux host vs container
+Common examples:
 
-A common trap is:
+- Java may use a JVM truststore such as `cacerts`.
+- Node.js can be configured with `NODE_EXTRA_CA_CERTS`.
+- Go usually uses the system pool, but static builds and container images still depend on the runtime environment.
+- Custom HTTP clients may set their own CA bundle.
 
-- host trust store updated
-- container trust store not updated
+The key point is simple: test the trust store used by the failing process, not a different tool.
 
-If the app runs in a container, the host result is secondary. The container result is what matters.
+## Commands to try
 
-### Language runtime trust stores
+### Show the chain from the server
 
-Some runtimes or SDKs do not rely entirely on the OS certificate bundle. If curl works but the application still fails, inspect the runtime-specific trust behavior.
+```bash
+openssl s_client -connect <host>:443 -servername <host> -showcerts </dev/null
+```
 
-### Internal PKI
+### Save and inspect a certificate
 
-For internal services, “unknown authority” may be the correct behavior until your internal CA is distributed properly. The fix is not to disable verification. The fix is to distribute trust intentionally.
+```bash
+openssl x509 -in cert.pem -noout -subject -issuer -dates
+openssl x509 -in cert.pem -noout -text
+```
+
+### Verify against a specific CA bundle
+
+```bash
+openssl verify -CAfile ca-bundle.pem server-cert.pem
+```
+
+### Test from the actual runtime host
+
+```bash
+curl -v https://<host>
+env | grep -i ca
+```
 
 ## What not to do
 
-Avoid these shortcuts:
+Avoid these as production fixes:
 
-- `curl -k`
-- disabling certificate verification in code
-- copying random cert files without understanding chain order
+- `curl -k`;
+- `--insecure`;
+- `InsecureSkipVerify`;
+- disabling certificate verification in an SDK;
+- copying random certificate files without knowing whether they are leaf, intermediate, or root certificates.
 
-Those can be useful for temporary diagnosis, but not as production fixes.
+Those shortcuts can help confirm a trust problem, but they remove the security property TLS is supposed to provide.
 
 ## How to fix it
 
-### If the server sends an incomplete chain
+### If the server chain is incomplete
 
-- install the intermediate certificate correctly
-- verify the chain from a clean client
+- install the full chain on the server;
+- include required intermediate certificates;
+- retest from a clean environment that did not previously trust the chain.
 
-### If the client is missing the right CA
+### If the client lacks the CA
 
-- install the CA in the actual runtime environment
-- update container images or trust bundles consistently
+- install the public CA bundle or internal root CA in the failing runtime;
+- rebuild containers after adding CA certificates;
+- document the CA distribution path for future deployments.
 
-### If the runtime uses a separate trust mechanism
+### If the app runtime uses a separate trust store
 
-- configure that runtime explicitly
-- document the expected trust source for future deploys
+- configure the runtime trust store explicitly;
+- keep runtime trust configuration versioned with the service;
+- verify with the same binary, image, and environment used in production.
 
-## FAQ
+## Related errors and how they differ
 
-### Why does the browser work but the container fails?
+### `certificate verify failed`
 
-Because the browser and the container may trust different CA bundles or receive different environment configuration.
+A broader verification failure. It may include unknown authority, hostname mismatch, expiry, or invalid chain.
 
-### Is this the same as `certificate verify failed`?
+### `TLS handshake failure`
 
-It is a closely related family of failures. `unknown authority` is more specific: the trust anchor could not be established.
-
-### Should I add my internal CA to every environment?
-
-If that CA is legitimately required, yes. Do it intentionally, consistently, and document it.
+A broader handshake failure. It can be caused by certificates, protocol versions, ciphers, SNI, or client/server policy mismatch.
 
 ## Short checklist
 
-- Inspect the exact chain sent by the server
-- Reproduce the failure in the real runtime, not only on your laptop
-- Decide whether the missing trust is on the server or the client
-- Never ship a permanent fix that disables verification
+- Inspect the exact chain sent by the server.
+- Reproduce the failure in the real runtime environment.
+- Decide whether the missing trust is server-side or client-side.
+- Fix the certificate chain or trust store, not the symptom.
+- Never ship a permanent fix that disables verification.
