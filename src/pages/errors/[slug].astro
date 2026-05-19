@@ -15,17 +15,18 @@ const { entry } = Astro.props as {
 	entry: Awaited<ReturnType<typeof getCollection<'errors'>>>[number];
 };
 
+const entries = await getCollection('errors');
 const { Content, headings } = await render(entry);
-const relatedEntries = (await getCollection('errors')).filter(
-	(candidate) =>
-		candidate.data.slug !== entry.data.slug && entry.data.related.includes(candidate.data.slug),
-);
+const relatedEntries = entry.data.related
+	.map((slug) => entries.find((candidate) => candidate.data.slug === slug))
+	.filter(Boolean);
 ---
 
 <ArticleLayout
 	title={entry.data.title}
 	description={entry.data.description}
 	publishedAt={entry.data.publishedAt}
+	updatedAt={entry.data.updatedAt}
 	tags={entry.data.tags}
 	headings={headings}
 >

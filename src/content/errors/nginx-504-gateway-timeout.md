@@ -3,6 +3,7 @@ title: 'How to debug 504 Gateway Timeout between Nginx and upstream services'
 description: A practical Nginx 504 troubleshooting guide that separates slow upstream code, dependency latency, connection problems, and unsafe timeout changes.
 slug: nginx-504-gateway-timeout
 publishedAt: 2026-05-14
+updatedAt: 2026-05-19
 tags:
   - Nginx
   - timeout

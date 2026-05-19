@@ -3,6 +3,7 @@ title: 'Why "upstream prematurely closed connection" happens in Nginx'
 description: A practical guide to Nginx upstream prematurely closed connection errors, focused on proving whether the app, proxy, keepalive reuse, or transport layer closed first.
 slug: upstream-prematurely-closed-connection
 publishedAt: 2026-05-14
+updatedAt: 2026-05-19
 tags:
   - Nginx
   - reverse-proxy

@@ -3,6 +3,7 @@ title: 'How to debug "x509: certificate signed by unknown authority"'
 description: A practical x509 unknown authority guide that separates incomplete server chains, missing client trust stores, internal CAs, containers, and runtime-specific TLS behavior.
 slug: x509-certificate-signed-by-unknown-authority
 publishedAt: 2026-05-14
+updatedAt: 2026-05-19
 tags:
   - TLS
   - x509

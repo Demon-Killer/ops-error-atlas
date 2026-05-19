@@ -9,6 +9,7 @@ const errors = defineCollection({
 		description: z.string(),
 		slug: z.string(),
 		publishedAt: z.coerce.date(),
+		updatedAt: z.coerce.date().optional(),
 		tags: z.array(z.string()),
 		related: z.array(z.string()).default([]),
 		popular: z.boolean().optional(),
