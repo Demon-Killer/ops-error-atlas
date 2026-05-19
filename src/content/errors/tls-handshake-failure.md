@@ -1,64 +1,159 @@
 ---
 title: 'What causes TLS handshake failure'
-description: Break down TLS handshake failure into certificate, protocol, and cipher mismatches, then verify each assumption with command-line tools.
+description: A practical TLS handshake failure guide that separates certificate chain problems, SNI mismatch, protocol and cipher mismatch, mTLS failures, and proxy TLS termination mistakes.
 slug: tls-handshake-failure
 publishedAt: 2026-05-09
+updatedAt: 2026-05-19
 tags:
   - TLS
   - certificates
   - HTTPS
 related:
-  - curl-28-operation-timed-out
-  - connection-reset-by-peer
   - x509-certificate-signed-by-unknown-authority
+  - tls-certificate-verify-failed
+  - tls-handshake-timeout
+  - curl-28-operation-timed-out
 ---
 
-`TLS handshake failure` means the client and server could not complete cryptographic negotiation before any application data moved. The failure is often caused by certificate problems, protocol mismatches, SNI issues, or unsupported cipher suites.
+`TLS handshake failure` means the client and server could not finish negotiating a secure session. The TCP connection may be fine, but TLS fails before normal HTTP data moves. The cause may be a certificate problem, SNI mismatch, protocol version mismatch, cipher mismatch, client certificate requirement, or a proxy using the wrong TLS termination mode.
 
 ## What it means
 
-The TCP connection may be fine, but the secure session could not be established. You need to inspect the handshake itself rather than the application payload.
+A simplified HTTPS connection looks like this:
+
+```text
+TCP connect -> TLS ClientHello -> certificate exchange -> key negotiation -> HTTP request
+```
+
+TLS handshake failure happens before the HTTP request is usable. That means HTTP logs may be empty or misleading because the application layer never really started.
 
 ## Common causes
 
-- The certificate chain is invalid or incomplete
-- The client and server do not share protocol versions
-- Cipher suites do not overlap
-- SNI points to the wrong virtual host
+- The server certificate chain is invalid or incomplete.
+- The client does not trust the issuing CA.
+- SNI points to the wrong virtual host.
+- Client and server do not share a supported TLS version.
+- Cipher suites do not overlap.
+- The server requires a client certificate and the client does not provide one.
+- A load balancer terminates TLS on the wrong hop.
+- The client sends HTTPS to a plain HTTP port, or HTTP to a TLS port.
 
-## How to diagnose it
+## Fast triage order
 
-Use TLS-specific tools before changing load balancer settings blindly.
-
-1. Verify the certificate chain.
-2. Confirm which protocol versions the server accepts.
-3. Check whether SNI is required.
-4. Compare successful and failing clients.
+1. Confirm the TCP connection succeeds.
+2. Inspect the server certificate with SNI enabled.
+3. Check certificate trust and hostname match.
+4. Test TLS versions and ciphers if only some clients fail.
+5. Check whether mTLS is required.
+6. Verify TLS termination points across load balancer, Nginx, and upstream.
 
 ## Commands to try
 
+### Inspect the handshake
+
 ```bash
 openssl s_client -connect your-host:443 -servername your-host
-curl -vk https://your-host
-tcpdump -nn port 443
 ```
+
+Always include `-servername` for SNI. Without it, you may test the wrong certificate.
+
+### Show the full certificate chain
+
+```bash
+openssl s_client -connect your-host:443 -servername your-host -showcerts
+```
+
+### Test with curl
+
+```bash
+curl -v https://your-host
+curl -vk https://your-host
+```
+
+`-k` can confirm that verification is the problem, but it is not a production fix.
+
+### Test protocol versions
+
+```bash
+openssl s_client -connect your-host:443 -servername your-host -tls1_2
+openssl s_client -connect your-host:443 -servername your-host -tls1_3
+```
+
+Use this when old clients fail but modern clients succeed, or the reverse.
+
+### Capture TLS handshake packets
+
+```bash
+tcpdump -nn -i any port 443
+```
+
+This will not decrypt traffic, but it can show resets, timeouts, and whether the handshake starts at all.
+
+## How to separate major cases
+
+| Signal | Likely cause |
+| --- | --- |
+| Browser works but container fails | client trust store issue |
+| Fails only without SNI | virtual host certificate selection |
+| Old client fails, new client works | TLS version or cipher mismatch |
+| Server asks for client cert | mTLS configuration |
+| HTTPS request receives plain HTTP | wrong port or TLS termination mistake |
+| `x509 unknown authority` | CA trust chain failure |
+
+## Load balancer and proxy checks
+
+TLS failures are often caused by confusion over where HTTPS ends:
+
+```text
+client -> load balancer -> Nginx -> upstream
+```
+
+Check each hop:
+
+- Does the client speak HTTPS to the load balancer?
+- Does the load balancer re-encrypt to Nginx, or send HTTP?
+- Does Nginx proxy to upstream with `http://` or `https://`?
+- Is upstream expecting TLS or plaintext?
+
+Wrong assumptions here often produce handshake failures or protocol mismatch errors.
 
 ## How to fix it
 
-Install a complete certificate chain, align protocol and cipher configuration, and confirm that SNI and virtual host mappings are correct. If only one client family fails, inspect its supported TLS versions and cipher preferences.
+### If the certificate chain is wrong
 
-## FAQ
+- install the full chain;
+- include intermediate certificates;
+- verify with a clean client.
 
-### Can a valid certificate still fail the handshake?
+### If SNI is wrong
 
-Yes. A valid certificate is only one part of the handshake. Version and cipher mismatches still break negotiation.
+- configure the correct server name;
+- ensure clients send the expected hostname;
+- check virtual host ordering on the server.
 
-### Why does one client fail while another works?
+### If protocols or ciphers do not overlap
 
-Different clients support different TLS versions, ciphers, SNI behavior, and trust stores.
+- identify the failing client family;
+- align TLS versions and cipher policy;
+- avoid enabling obsolete protocols unless there is a deliberate compatibility requirement.
+
+### If mTLS is required
+
+- provide the client certificate and key;
+- install the correct client CA on the server;
+- check certificate purpose and validity.
+
+## What not to do
+
+- Do not disable certificate verification as a permanent fix.
+- Do not test without SNI and assume the result is valid.
+- Do not debug HTTP handlers before proving the TLS handshake completes.
+- Do not change TLS policy blindly for all clients.
 
 ## Short checklist
 
-- Verify the chain with openssl
-- Check protocol and cipher overlap
-- Confirm SNI and host mapping
+- Confirm TCP connect works.
+- Test with `openssl s_client -servername`.
+- Inspect certificate chain and hostname.
+- Compare failing and working client TLS versions.
+- Verify TLS termination on every proxy hop.

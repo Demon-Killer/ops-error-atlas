@@ -1,8 +1,9 @@
 ---
 title: 'Why "connection refused" happens on Linux'
-description: Learn what connection refused really means, how it differs from timeout failures, and which checks to run first on Linux.
+description: A practical guide to connection refused errors that separates missing listeners, bind address mistakes, wrong ports, container networking, and active firewall rejects.
 slug: connection-refused
 publishedAt: 2026-05-08
+updatedAt: 2026-05-19
 tags:
   - TCP
   - Linux
@@ -10,55 +11,136 @@ tags:
 related:
   - connection-reset-by-peer
   - no-route-to-host
+  - address-already-in-use
+  - nginx-502-bad-gateway
 ---
 
-`connection refused` means the TCP connection attempt reached the target host, but no application accepted the connection on that IP and port. This usually points to a listener problem, bind address mismatch, or an active reject from a firewall or proxy.
+`connection refused` means the TCP connection attempt reached a host that actively rejected it. In practice, the target port is usually not listening, the service is bound to the wrong address, the client is using the wrong port, or a firewall/proxy is configured to reject instead of silently drop traffic.
 
 ## What it means
 
-The network path is often good enough for the SYN packet to arrive. The failure happens because nothing is listening where the client expects, or an intermediate device rejects the connection immediately.
+This error is different from a timeout. With a timeout, the client waits and receives no useful response. With `connection refused`, the failure is immediate because something answered the connection attempt with a rejection.
+
+That makes it easier to debug than many network errors.
 
 ## Common causes
 
-- The target service is not running.
-- The service listens on `127.0.0.1` instead of the external interface.
-- The port number is wrong.
-- A firewall or proxy is configured to reject connections explicitly.
+- The service is not running.
+- The service listens on `127.0.0.1` but the client connects to an external IP.
+- The client is using the wrong host or port.
+- A container exposes a port internally but not on the host.
+- Kubernetes Service, Docker port mapping, or security group configuration is wrong.
+- A firewall is actively rejecting the connection.
 
-## How to diagnose it
+## Fast triage order
 
-Start on the server side. `Connection refused` is usually easier to diagnose than a timeout because it is more immediate and specific.
-
-1. Confirm the service is running.
-2. Check which IP and port the service is listening on.
-3. Compare the expected port with the real bind port.
-4. Inspect local firewall rules if the service appears healthy.
+1. Check the exact host and port the client is using.
+2. On the target host, confirm a process is listening on that IP and port.
+3. Check whether the service is bound to `127.0.0.1`, `0.0.0.0`, or a specific interface.
+4. If containers are involved, check port publishing and service DNS.
+5. If the listener exists, inspect firewall or proxy reject rules.
 
 ## Commands to try
 
+### Check listeners on the server
+
 ```bash
 ss -ltnp
-systemctl status your-service
-iptables -L -n
 lsof -i :<port>
 ```
 
+Look for both the port and the bind address.
+
+Examples:
+
+```text
+127.0.0.1:8080    local-only listener
+0.0.0.0:8080      all IPv4 interfaces
+:::8080           IPv6/all interfaces depending on system config
+```
+
+### Check service state
+
+```bash
+systemctl status your-service
+journalctl -u your-service --since -30m
+```
+
+### Test from the client and from the server
+
+```bash
+curl -v http://host:port/
+nc -vz host port
+curl -v http://127.0.0.1:port/
+```
+
+If local curl works but remote curl fails, suspect bind address, firewall, container mapping, or routing.
+
+### Check firewall behavior
+
+```bash
+iptables -L -n
+nft list ruleset
+```
+
+Reject rules often produce fast failures. Drop rules more often produce timeouts.
+
+### In Docker
+
+```bash
+docker ps
+docker port <container>
+docker logs <container>
+```
+
+Verify that the container port is actually published to the host.
+
+## How to separate it from similar errors
+
+| Error | Meaning |
+| --- | --- |
+| `connection refused` | Host rejected the connection immediately |
+| `connection timed out` | No response arrived before timeout |
+| `no route to host` | Routing or host reachability failed |
+| `connection reset by peer` | Connection existed, then peer reset it |
+
 ## How to fix it
 
-Start the missing service, correct the bind address, or point the client to the right host and port. If a firewall is rejecting the traffic, align the rule set with the intended exposure of the service.
+### If the service is not running
 
-## FAQ
+- start or restart the service;
+- inspect crash logs;
+- check whether it failed to bind because the port is already used.
 
-### Is connection refused a DNS problem?
+### If the bind address is wrong
 
-Usually no. DNS might point you to the wrong host, but the refusal itself means the target system answered the connection attempt.
+- bind to the intended interface;
+- use `0.0.0.0` only when the service should be reachable externally;
+- keep admin-only services bound to localhost.
 
-### Is this the same as timeout?
+### If the port is wrong
 
-No. A refusal is immediate. A timeout usually means packets were dropped or the remote side never responded in time.
+- correct client config;
+- check environment variables and service discovery;
+- verify Nginx `proxy_pass` or upstream config.
+
+### If containers are involved
+
+- publish the port correctly;
+- check container network mode;
+- verify service names inside the same Docker network or Kubernetes namespace.
+
+## Common mistakes
+
+- Debugging DNS first even though the host already rejected the connection.
+- Testing only on the server with `localhost`.
+- Forgetting that `127.0.0.1` inside a container is not the host.
+- Treating refusal and timeout as the same class of problem.
 
 ## Short checklist
 
-- Confirm the process is running
-- Check the bind address and port
-- Compare expected and actual listener settings
+- Confirm exact host and port.
+- Check `ss -ltnp` on the target host.
+- Compare local vs remote connection attempts.
+- Inspect bind address before changing firewall rules.
+- For containers, verify published ports and network scope.
