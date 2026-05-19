@@ -7,6 +7,28 @@ import BaseLayout from '../../layouts/BaseLayout.astro';
 const entries = (await getCollection('errors')).sort(
 	(a, b) => b.data.publishedAt.getTime() - a.data.publishedAt.getTime(),
 );
+const categories = [
+	{
+		title: 'Nginx and reverse proxy',
+		description: 'Gateway errors, upstream timeouts, connection closes, and proxy routing failures.',
+		tags: ['Nginx', 'reverse-proxy'],
+	},
+	{
+		title: 'TCP and sockets',
+		description: 'Resets, refused connections, broken pipes, retransmissions, and packet loss.',
+		tags: ['TCP', 'sockets'],
+	},
+	{
+		title: 'TLS and certificates',
+		description: 'Handshake failures, unknown authorities, verification errors, and trust-store issues.',
+		tags: ['TLS', 'certificates'],
+	},
+	{
+		title: 'Linux operations',
+		description: 'Host-level limits, DNS failures, ports, routes, and runtime diagnostics.',
+		tags: ['Linux', 'DNS'],
+	},
+];
 const searchItems = entries.map((entry) => ({
 	title: entry.data.title,
 	href: `/errors/${entry.data.slug}/`,
@@ -27,6 +49,40 @@ const searchItems = entries.map((entry) => ({
 
 	<section class="section section-inner">
 		<SearchBox items={searchItems} />
+	</section>
+
+	<section class="section section-inner">
+		<div class="section-heading">
+			<div>
+				<h2>Browse by failure area</h2>
+				<p>Start from the layer that owns the symptom, then move to adjacent causes.</p>
+			</div>
+		</div>
+		<div class="grid">
+			{
+				categories.map((category) => {
+					const matches = entries
+						.filter((entry) => entry.data.tags.some((tag) => category.tags.includes(tag)))
+						.slice(0, 4);
+					return (
+						<section class="card">
+							<div class="card-meta">
+								<span>{category.tags.join(' / ')}</span>
+							</div>
+							<h3>{category.title}</h3>
+							<p>{category.description}</p>
+							<ul class="cluster-list">
+								{matches.map((entry) => (
+									<li>
+										<a href={`/errors/${entry.data.slug}/`}>{entry.data.title}</a>
+									</li>
+								))}
+							</ul>
+						</section>
+					);
+				})
+			}
+		</div>
 	</section>
 
 	<section class="section section-inner">

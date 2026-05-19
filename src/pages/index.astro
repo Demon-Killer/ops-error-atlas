@@ -19,6 +19,38 @@ const popular = entries
 	.filter((entry) => entry.data.popular && !deepDiveSlugs.includes(entry.data.slug))
 	.slice(0, 3);
 const latest = entries.slice(0, 6);
+const topicClusters = [
+	{
+		title: 'Nginx upstream failures',
+		description: 'Debug 502, 504, upstream timeouts, early closes, and client aborts.',
+		slugs: [
+			'nginx-504-gateway-timeout',
+			'nginx-upstream-timed-out',
+			'upstream-prematurely-closed-connection',
+			'nginx-502-bad-gateway',
+		],
+	},
+	{
+		title: 'TCP connection failures',
+		description: 'Separate resets, refused connections, broken pipes, packet loss, and latency.',
+		slugs: [
+			'connection-reset-by-peer',
+			'connection-refused',
+			'broken-pipe',
+			'tcp-retransmissions',
+		],
+	},
+	{
+		title: 'TLS and certificate failures',
+		description: 'Check unknown authorities, failed verification, handshake timeouts, and SNI issues.',
+		slugs: [
+			'x509-certificate-signed-by-unknown-authority',
+			'tls-certificate-verify-failed',
+			'tls-handshake-failure',
+			'tls-handshake-timeout',
+		],
+	},
+];
 const searchItems = entries.map((entry) => ({
 	title: entry.data.title,
 	href: `/errors/${entry.data.slug}/`,
@@ -121,6 +153,38 @@ const searchItems = entries.map((entry) => ({
 
 	<section class="section section-inner">
 		<SearchBox items={searchItems} />
+	</section>
+
+	<section class="section section-inner">
+		<div class="section-heading">
+			<div>
+				<h2>Troubleshooting Topics</h2>
+				<p>Use these clusters when one error is only the first visible symptom.</p>
+			</div>
+		</div>
+		<div class="grid">
+			{
+				topicClusters.map((cluster) => (
+					<section class="card">
+						<div class="card-meta">
+							<span>Topic cluster</span>
+						</div>
+						<h3>{cluster.title}</h3>
+						<p>{cluster.description}</p>
+						<ul class="cluster-list">
+							{cluster.slugs.map((slug) => {
+								const entry = entries.find((candidate) => candidate.data.slug === slug);
+								return entry ? (
+									<li>
+										<a href={`/errors/${entry.data.slug}/`}>{entry.data.title}</a>
+									</li>
+								) : null;
+							})}
+						</ul>
+					</section>
+				))
+			}
+		</div>
 	</section>
 
 	<section class="section section-inner">

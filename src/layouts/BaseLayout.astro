@@ -357,6 +357,18 @@ const canonical = new URL(Astro.url.pathname, site).toString();
 		color: var(--accent-strong);
 	}
 
+	.cluster-list {
+		display: grid;
+		gap: 0.55rem;
+		margin: 1rem 0 0;
+		padding-left: 1.05rem;
+	}
+
+	.cluster-list a {
+		color: var(--accent-strong);
+		font-weight: 650;
+	}
+
 	.search-panel,
 	.tool-shell,
 	.text-panel {
