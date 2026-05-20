@@ -1,64 +1,158 @@
 ---
 title: 'What causes TLS handshake timeout'
-description: Understand TLS handshake timeout failures and learn how to separate TCP, certificate, and server-side slowness.
+description: A practical TLS handshake timeout guide that separates TCP connect delay, packet loss, SNI, certificate exchange, server CPU pressure, mTLS, and proxy TLS termination issues.
 slug: tls-handshake-timeout
 publishedAt: 2026-05-14
+updatedAt: 2026-05-20
 tags:
   - TLS
   - timeout
   - HTTPS
 related:
   - tls-handshake-failure
+  - curl-28-operation-timed-out
   - high-network-latency
+  - x509-certificate-signed-by-unknown-authority
 ---
 
-`TLS handshake timeout` means the secure session did not complete before the configured timeout expired. The delay may come from packet loss, overloaded servers, slow cryptographic setup, or network paths that are too unstable for the handshake to finish in time.
+`TLS handshake timeout` means the secure session did not complete before the configured deadline. TCP may have connected successfully, but TLS negotiation did not finish in time. The cause may be packet loss, server CPU pressure, SNI or certificate exchange issues, mTLS delays, or a proxy terminating TLS on the wrong hop.
 
 ## What it means
 
-The TCP connection may exist, but the transition to a trusted encrypted session took too long. This is different from a pure certificate validation error because time, not just trust, is the main symptom.
+An HTTPS request usually progresses like this:
+
+```text
+DNS -> TCP connect -> TLS handshake -> HTTP request -> response
+```
+
+TLS handshake timeout sits between TCP and HTTP. If you debug only HTTP handlers, you may miss the failure entirely.
 
 ## Common causes
 
-- High network latency or packet loss
-- Overloaded servers handling too many handshakes
-- Slow TLS negotiation because of CPU pressure or bad configuration
-- Short timeout settings on the client or proxy
+- High latency or packet loss during handshake.
+- Server CPU saturation from too many handshakes.
+- TLS configuration with expensive or incompatible negotiation.
+- SNI points to the wrong virtual host.
+- Server requests a client certificate and the client stalls or fails.
+- Load balancer or proxy expects a different TLS/plaintext mode.
+- Timeout values are too aggressive for the path.
 
-## How to diagnose it
+## Fast triage order
 
-Break the problem into layers: TCP connect, TLS negotiation, then application.
-
-1. Measure TCP connect time separately.
-2. Test TLS negotiation with a low-level client.
-3. Compare handshake speed between healthy and unhealthy hosts.
-4. Check server CPU and handshake concurrency during the failures.
+1. Measure TCP connect time separately from TLS time.
+2. Test with `openssl s_client` using SNI.
+3. Compare successful and failing clients.
+4. Check server CPU and connection rate during failures.
+5. Inspect packet loss and retransmissions.
+6. Verify TLS termination across load balancer, Nginx, and upstream.
 
 ## Commands to try
 
+### Break down curl timing
+
 ```bash
-curl -vk https://<host>
-openssl s_client -connect <host>:443 -servername <host>
-mtr -rw <host>
-top -H -p <pid>
+curl -s -o /dev/null \
+  -w 'connect=%{time_connect} tls=%{time_appconnect} first_byte=%{time_starttransfer} total=%{time_total}\n' \
+  https://<host>
 ```
+
+High `time_appconnect` means TLS negotiation is the slow phase.
+
+### Inspect the TLS handshake
+
+```bash
+openssl s_client -connect <host>:443 -servername <host>
+```
+
+Always include `-servername` for SNI.
+
+### Test versions if client behavior differs
+
+```bash
+openssl s_client -connect <host>:443 -servername <host> -tls1_2
+openssl s_client -connect <host>:443 -servername <host> -tls1_3
+```
+
+### Check network path
+
+```bash
+mtr -rw <host>
+tcpdump -nn -i any host <host-ip> and port 443
+```
+
+### Check server pressure
+
+```bash
+top
+vmstat 1 5
+ss -tan state established '( sport = :443 )'
+```
+
+## How to interpret signals
+
+| Signal | Likely direction |
+| --- | --- |
+| TCP connect fast, TLS slow | TLS negotiation, CPU, certificate, SNI, mTLS |
+| TCP connect slow too | network path, firewall, listener pressure |
+| only old clients fail | TLS version or cipher policy |
+| only one backend fails | instance-level CPU, config, or certificate issue |
+| failures under burst traffic | handshake concurrency or CPU saturation |
+| works with direct upstream but not through proxy | TLS termination or proxy config |
+
+## Load balancer and proxy checks
+
+For this path:
+
+```text
+client -> load balancer -> Nginx -> upstream
+```
+
+Confirm:
+
+- where TLS terminates;
+- whether the next hop is HTTP or HTTPS;
+- whether SNI is preserved or rewritten;
+- whether mTLS is required on any hop;
+- whether timeout budgets align across all hops.
 
 ## How to fix it
 
-Reduce packet loss, increase handshake capacity on the server, simplify TLS configuration where appropriate, and align timeout settings with real-world handshake behavior.
+### If network loss causes the timeout
 
-## FAQ
+- fix packet loss or routing instability;
+- compare affected regions and paths;
+- collect packet evidence before changing TLS settings.
 
-### Is this the same as certificate verify failed?
+### If server CPU is the bottleneck
 
-No. A handshake timeout is primarily about time. Certificate verify failures are about trust validation.
+- reduce handshake rate with connection reuse;
+- scale TLS termination;
+- inspect expensive cipher or certificate choices;
+- check whether traffic spikes bypass keepalive.
 
-### Can CPU saturation cause TLS handshake timeout?
+### If SNI or certificate selection is wrong
 
-Yes. Handshakes can become slow when the server is overloaded or handling too many concurrent cryptographic operations.
+- send the correct SNI;
+- fix virtual host certificate mapping;
+- retest with `openssl s_client -servername`.
+
+### If proxy TLS mode is wrong
+
+- align `http://` vs `https://` between every hop;
+- verify whether TLS should terminate or pass through;
+- check load balancer listener and target settings.
+
+## What not to do
+
+- Do not treat handshake timeout as a certificate trust error without evidence.
+- Do not test with openssl without SNI and trust the result.
+- Do not debug app handlers before proving TLS completes.
+- Do not raise handshake timeouts without checking CPU and packet loss.
 
 ## Short checklist
 
-- Measure TCP connect and TLS handshake separately
-- Check server load during failures
-- Compare timeout settings with real handshake duration
+- Separate TCP connect time from TLS time.
+- Test with SNI using `openssl s_client`.
+- Check packet loss and retransmissions.
+- Check TLS termination and proxy mode.
+- Inspect server CPU and handshake concurrency during failures.

@@ -1,8 +1,9 @@
 ---
 title: 'Why "socket hang up" happens'
-description: Learn what socket hang up usually means in backend clients and how to trace whether the peer, proxy, or application closed the connection first.
+description: A practical socket hang up guide for backend clients that separates peer resets, proxy timeouts, keepalive reuse, protocol mismatch, and application aborts.
 slug: socket-hang-up
 publishedAt: 2026-05-14
+updatedAt: 2026-05-20
 tags:
   - sockets
   - backend
@@ -10,55 +11,107 @@ tags:
 related:
   - connection-reset-by-peer
   - broken-pipe
+  - upstream-prematurely-closed-connection
+  - curl-28-operation-timed-out
 ---
 
-`socket hang up` usually means the connection was closed unexpectedly before the request or response completed. The exact meaning depends on the runtime, but the practical diagnosis is similar: determine who closed the connection first and why.
+`socket hang up` means the connection closed before the request or response completed. In backend clients, especially Node.js services, it often appears when the peer resets the connection, a proxy cuts an idle stream, a keepalive connection is stale, or the application aborts the request pipeline.
 
 ## What it means
 
-The socket lifecycle ended earlier than the application expected. In many server-side runtimes, this appears when the peer resets the connection, a proxy cuts the stream, or the application pipeline aborts mid-flight.
+The socket lifecycle ended earlier than the runtime expected. The root cause may be outside the application process that reports the error.
+
+Typical path:
+
+```text
+client library -> proxy/load balancer -> upstream service
+```
+
+Any hop can close first.
 
 ## Common causes
 
-- The upstream service closed the connection early.
-- A proxy or load balancer enforced an idle timeout.
-- The client and server disagreed on protocol or payload framing.
-- The application hit an internal error and aborted the connection.
+- Upstream process crashed or restarted.
+- Proxy or load balancer enforced an idle timeout.
+- Client reused a stale keepalive connection.
+- HTTPS was sent to an HTTP port, or the reverse.
+- Server closed because request headers, body, or framing were invalid.
+- Application code aborted the request internally.
 
-## How to diagnose it
+## Fast triage order
 
-Focus on the timeline around the disconnect.
-
-1. Compare client logs with server and proxy logs.
-2. Check whether the failure happens before or after response headers.
-3. Inspect timeouts and keep-alive behavior across the path.
-4. Capture packets if the disconnect source is unclear.
+1. Identify whether the error happens before headers, after headers, or during response body.
+2. Compare client logs with proxy and upstream logs at the same timestamp.
+3. Check if failures cluster after idle periods.
+4. Test with keepalive disabled or `Connection: close`.
+5. Capture packets if you need to prove who closed first.
 
 ## Commands to try
 
+### Reproduce with curl
+
 ```bash
-curl -v https://<host>
-ss -tanp
-tcpdump -nn host <peer-ip>
-journalctl -u your-service --since -15m
+curl -v http://<host>:<port>/<path>
+curl -H 'Connection: close' -v http://<host>:<port>/<path>
 ```
+
+If `Connection: close` changes behavior, suspect stale keepalive reuse.
+
+### Check sockets and service logs
+
+```bash
+ss -tanp
+journalctl -u your-service --since -30m
+journalctl -u nginx --since -30m
+```
+
+### Capture close behavior
+
+```bash
+tcpdump -nn -i any host <peer-ip> and port <port>
+```
+
+Look for `RST`, `FIN`, and which side sends the first close.
+
+## How to interpret signals
+
+| Signal | Likely direction |
+| --- | --- |
+| happens after idle period | keepalive or idle timeout mismatch |
+| happens during deploy | missing connection draining or upstream restart |
+| only one upstream instance fails | bad node or bad version |
+| HTTPS/HTTP mismatch in curl output | protocol or port mistake |
+| large responses fail | streaming, buffering, or timeout path |
 
 ## How to fix it
 
-Align timeout values, correct protocol handling, and remove the condition that causes the peer or proxy to close the connection early. If the app aborts the stream internally, fix that code path instead of masking the symptom.
+### If keepalive reuse is the trigger
 
-## FAQ
+- align idle timeouts across client, proxy, and upstream;
+- reduce client keepalive lifetime below server idle timeout;
+- temporarily disable keepalive to confirm the cause.
 
-### Is socket hang up always a network issue?
+### If upstream closes early
 
-No. It often points to application or proxy behavior rather than a broken network path.
+- inspect app crashes and restarts;
+- check deploy draining;
+- compare healthy and unhealthy upstream nodes.
 
-### Is it the same as broken pipe?
+### If protocol mismatch is the trigger
 
-They are related but not identical. One usually describes an unexpected disconnect, while the other describes a failed write after the disconnect.
+- verify scheme, port, and TLS termination point;
+- ensure each hop speaks the protocol it expects.
+
+### If app code aborts internally
+
+- handle cancellation explicitly;
+- stop downstream work after abort;
+- log abort reason close to the source.
 
 ## Short checklist
 
-- Determine who closed the connection first
-- Compare logs across client, proxy, and server
-- Check timeout and keep-alive alignment
+- Determine whether close happens before headers, after headers, or mid-body.
+- Compare client, proxy, and upstream logs.
+- Test with `Connection: close`.
+- Check deploy and idle timeout windows.
+- Use packet capture to prove who closed first when logs disagree.

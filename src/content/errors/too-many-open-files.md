@@ -1,8 +1,9 @@
 ---
 title: 'How to debug "too many open files"'
-description: Understand file descriptor exhaustion in Linux services and learn how to separate leaks, burst load, and low limits.
+description: A practical Linux file descriptor guide that separates low limits, descriptor leaks, burst traffic, socket accumulation, slow dependencies, and system-wide exhaustion.
 slug: too-many-open-files
 publishedAt: 2026-05-07
+updatedAt: 2026-05-20
 tags:
   - Linux
   - limits
@@ -10,55 +11,142 @@ tags:
 related:
   - broken-pipe
   - io-timeout
+  - socket-hang-up
+  - connection-refused
 ---
 
-`too many open files` means the process reached its file descriptor limit and can no longer open files, sockets, pipes, or similar resources. In backend systems, this often appears under burst traffic, connection leaks, or misconfigured limits.
+`too many open files` means a process, user, or system has exhausted its file descriptor budget. On Linux, sockets, files, pipes, eventfds, epoll descriptors, and many other resources consume file descriptors. In backend services, the symptom often appears as failed accepts, failed outbound connections, log write failures, or unstable behavior under load.
 
 ## What it means
 
-The kernel is refusing new descriptors because the process limit or system-wide limit has been exhausted. The symptom may show up as failed network accepts, failed file reads, or unstable application behavior under load.
+Every process has a limit on how many file descriptors it can keep open. When the limit is reached, new operations fail even if CPU and memory look fine.
+
+The cause is usually one of three things:
+
+- the limit is too low for legitimate traffic;
+- the application leaks descriptors;
+- a slow dependency keeps sockets open longer than expected.
 
 ## Common causes
 
-- The process leaks sockets or files.
-- The configured `ulimit` is too low for real traffic.
-- Short-lived connections create descriptor churn faster than cleanup.
-- A downstream dependency becomes slow and causes many descriptors to stay open longer.
+- Socket or file descriptor leak.
+- Very low `ulimit -n` or systemd `LimitNOFILE`.
+- Burst traffic creates more concurrent sockets than expected.
+- Slow clients or downstream dependencies keep connections open.
+- Missing connection pooling limits.
+- System-wide file descriptor pressure.
 
-## How to diagnose it
+## Fast triage order
 
-Do not raise the limit blindly. First check whether the application is leaking descriptors or just using them heavily.
-
-1. Check the current per-process limit.
-2. Count open descriptors for the target process.
-3. Compare normal steady-state counts with spike counts.
-4. Inspect whether a specific file type or socket state is growing continuously.
+1. Identify the failing process.
+2. Check per-process limits.
+3. Count descriptors currently open.
+4. Classify descriptor types: TCP sockets, files, pipes, anon_inode, etc.
+5. Watch whether the count grows continuously or only spikes under load.
+6. Check system-wide file descriptor usage.
 
 ## Commands to try
 
+### Check process limits
+
 ```bash
+cat /proc/<pid>/limits | grep -i files
 ulimit -n
-cat /proc/<pid>/limits
+```
+
+For systemd services:
+
+```bash
+systemctl show your-service -p LimitNOFILE
+```
+
+### Count open descriptors
+
+```bash
+ls /proc/<pid>/fd | wc -l
 lsof -p <pid> | wc -l
+```
+
+### Classify descriptors
+
+```bash
+lsof -p <pid> | awk '{print $5}' | sort | uniq -c | sort -nr | head
 lsof -p <pid> | head -50
 ```
 
+### Inspect socket states
+
+```bash
+ss -tanp | grep '<pid-or-process-name>'
+ss -s
+```
+
+If many sockets are stuck in established or close-wait states, inspect application close behavior and downstream latency.
+
+### Check system-wide usage
+
+```bash
+cat /proc/sys/fs/file-nr
+cat /proc/sys/fs/file-max
+```
+
+## How to separate major cases
+
+| Signal | Likely cause |
+| --- | --- |
+| descriptor count grows forever | leak |
+| count spikes with traffic then returns | legitimate concurrency or burst load |
+| many `CLOSE-WAIT` sockets | app not closing after peer close |
+| many outbound connections | pool limit or dependency slowness |
+| system-wide file-nr near max | host-level pressure |
+
 ## How to fix it
 
-If the application leaks descriptors, fix the code path first. If the workload is legitimate, raise the limits carefully and monitor descriptor usage during peak traffic. Also inspect slow dependencies that keep connections open longer than expected.
+### If the limit is too low
 
-## FAQ
+- raise per-service `LimitNOFILE`;
+- set appropriate user limits;
+- reload systemd and restart the service;
+- monitor descriptor usage after the change.
 
-### Can increasing ulimit solve it?
+Example systemd override:
 
-Sometimes, but only if the workload is valid. If you have a leak, raising the limit just delays the next failure.
+```ini
+[Service]
+LimitNOFILE=65535
+```
 
-### Does this affect sockets and files the same way?
+### If the application leaks descriptors
 
-Yes. They all consume file descriptors from the same process limit.
+- find which descriptor type grows;
+- add missing `close()` or cleanup paths;
+- fix error paths that skip cleanup;
+- add tests or metrics around resource lifetime.
+
+### If slow dependencies hold sockets open
+
+- set outbound pool limits;
+- set dependency timeouts;
+- reduce fan-out;
+- add backpressure instead of allowing unbounded waits.
+
+### If close-wait grows
+
+- the peer has closed, but your process has not closed its side;
+- inspect read loops and connection cleanup;
+- fix application lifecycle handling.
+
+## What not to do
+
+- Do not only raise `ulimit` if the descriptor count grows without bound.
+- Do not ignore `CLOSE-WAIT`.
+- Do not forget systemd limits when shell `ulimit` looks correct.
+- Do not treat sockets and files as separate budgets; both consume descriptors.
 
 ## Short checklist
 
-- Measure descriptor count before changing limits
-- Check for continuous growth
-- Separate burst load from real leaks
+- Check `/proc/<pid>/limits`.
+- Count and classify open descriptors.
+- Watch whether usage grows forever or spikes with load.
+- Inspect socket states, especially `CLOSE-WAIT`.
+- Raise limits only after separating valid load from leaks.
