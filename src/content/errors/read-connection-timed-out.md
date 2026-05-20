@@ -1,64 +1,122 @@
 ---
 title: 'Why "read: connection timed out" happens'
-description: Understand read-side timeouts, how they differ from connect failures, and what to inspect before changing timeout values.
+description: A practical read timeout guide that separates established connections, first-byte delay, stalled response bodies, packet loss, proxy idle timeouts, and upstream dependency latency.
 slug: read-connection-timed-out
 publishedAt: 2026-05-04
+updatedAt: 2026-05-20
 tags:
   - timeout
   - TCP
   - Linux
 related:
-  - curl-28-operation-timed-out
   - io-timeout
+  - curl-28-operation-timed-out
+  - high-network-latency
+  - tcp-retransmissions
 ---
 
-`read: connection timed out` usually means the connection was established, but the application did not receive data before the read timeout expired. This points to slow response delivery, packet loss, or downstream stalls rather than a pure connect failure.
+`read: connection timed out` usually means the connection was established, but expected data did not arrive before the read deadline. This is different from DNS failure or TCP connect failure. The connection exists; the problem is that the next bytes were too late.
 
 ## What it means
 
-The client reached the server, but the expected bytes did not arrive within the configured read window. That is different from DNS or TCP connect problems.
+A request can succeed at connection setup but still fail while reading:
+
+```text
+DNS -> TCP connect -> TLS -> request write -> response read
+```
+
+The read timeout lives near the end of that path. It may happen before the first byte, between response chunks, or while reading a long response body.
 
 ## Common causes
 
-- The upstream service is too slow to produce a response.
-- Packet loss or retransmissions delay delivery.
-- Intermediate proxies or firewalls interfere with idle flows.
-- Read timeout values are too short for the actual workload.
+- Upstream application accepted the request but is slow to produce a response.
+- Database, cache, or downstream API blocks the upstream.
+- Packet loss delays response delivery.
+- Proxy or firewall stalls idle flows.
+- Response body streaming pauses longer than the read timeout.
+- Timeout values are shorter than real p95 or p99 response latency.
 
-## How to diagnose it
+## Fast triage order
 
-Check whether data is delayed or never sent at all.
-
-1. Confirm that the connection setup succeeds.
-2. Measure time to first byte if possible.
-3. Inspect packet behavior during the wait.
-4. Compare the read timeout with real response time.
+1. Confirm TCP connect succeeds quickly.
+2. Measure time to first byte.
+3. Check whether the timeout happens before headers or during response body.
+4. Compare client logs with upstream and proxy logs.
+5. Inspect retransmissions and packet loss during the wait.
+6. Check whether the endpoint is slow only under load.
 
 ## Commands to try
 
+### Break down request timing
+
 ```bash
-curl -v https://<host>
-ss -tanp
-tcpdump -nn host <peer-ip>
-journalctl -u your-service --since -15m
+curl -s -o /dev/null \
+  -w 'connect=%{time_connect} tls=%{time_appconnect} first_byte=%{time_starttransfer} total=%{time_total}\n' \
+  https://<host>/<path>
 ```
+
+If `connect` is low but `first_byte` is high, the problem is usually upstream processing or a proxy path, not basic reachability.
+
+### Check sockets and retransmissions
+
+```bash
+ss -ti
+netstat -s | grep -Ei 'retrans|timeout'
+```
+
+### Capture the wait
+
+```bash
+tcpdump -nn -i any host <peer-ip> and port <port>
+```
+
+Use this to see whether packets stop, retransmit, or get reset.
+
+### Compare service logs
+
+```bash
+journalctl -u your-service --since -30m
+journalctl -u nginx --since -30m
+```
+
+## How to interpret signals
+
+| Signal | Likely direction |
+| --- | --- |
+| connect fast, first byte slow | app, proxy, or dependency latency |
+| response starts then stalls | streaming, buffering, or downstream slowness |
+| retransmissions increase | packet loss or receiver pressure |
+| only one endpoint fails | endpoint-specific app or dependency issue |
+| failures cluster at exact idle duration | proxy or firewall idle timeout |
 
 ## How to fix it
 
-Only raise the read timeout after you confirm the service is healthy and just slower than expected. If the upstream is blocked or packets are being lost, fix those conditions first.
+### If first byte is slow
 
-## FAQ
+- profile the upstream handler;
+- inspect DB/cache/API latency;
+- add server-side timing logs.
 
-### Is this the same as connection refused?
+### If response body stalls
 
-No. A refusal happens during connect. A read timeout happens after the connection exists.
+- inspect streaming code;
+- check proxy buffering;
+- reduce large response payloads or flush intentionally.
 
-### Can idle timeouts from proxies trigger it?
+### If packet loss is involved
 
-Yes. Some proxies close or stall flows in ways that surface as client-side read timeouts.
+- fix retransmissions, interface drops, or bad path;
+- compare client and server packet captures.
+
+### If idle timeout mismatch is involved
+
+- align client, proxy, load balancer, and upstream read/idle timeouts;
+- do not simply set all values very high.
 
 ## Short checklist
 
-- Confirm connect succeeds
-- Measure time to first response data
-- Inspect loss, stalls, and proxy idle behavior
+- Prove connect succeeds before debugging read timeout.
+- Measure first byte separately from total time.
+- Compare client-side wait with upstream logs.
+- Check retransmissions during the stalled window.
+- Tune read deadlines only after finding the slow phase.

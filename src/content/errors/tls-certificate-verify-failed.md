@@ -1,64 +1,133 @@
 ---
 title: 'How to fix "certificate verify failed"'
-description: Learn why certificate verify failed happens in HTTPS clients and how to separate trust-store issues from hostname and chain problems.
+description: A practical certificate verify failed guide that separates hostname mismatch, expired certificates, incomplete chains, missing trust stores, containers, and runtime-specific CA behavior.
 slug: tls-certificate-verify-failed
 publishedAt: 2026-05-14
+updatedAt: 2026-05-20
 tags:
   - TLS
   - certificates
   - HTTPS
 related:
-  - tls-handshake-failure
-  - curl-28-operation-timed-out
   - x509-certificate-signed-by-unknown-authority
+  - tls-handshake-failure
+  - tls-handshake-timeout
+  - curl-28-operation-timed-out
 ---
 
-`certificate verify failed` means the client could not validate the server certificate against its trust rules. In practice, this usually comes from an incomplete certificate chain, a hostname mismatch, an expired certificate, or a missing CA in the local trust store.
+`certificate verify failed` means the client rejected the certificate during TLS verification. The TCP connection may work and the TLS handshake may start, but the client refuses to trust the certificate for the requested hostname, validity period, issuing authority, or chain.
 
 ## What it means
 
-The TCP and TLS handshake may start correctly, but the client refuses to trust the certificate that the server presented. This is a trust decision, not only a transport decision.
+Certificate verification usually checks:
+
+- hostname matches Subject Alternative Name;
+- certificate is not expired or not-yet-valid;
+- certificate chain leads to a trusted CA;
+- intermediate certificates are present;
+- certificate purpose and key usage are acceptable;
+- local trust store contains the required CA.
+
+The failing side is often the client environment, not the server alone.
 
 ## Common causes
 
-- The server does not send the full certificate chain.
-- The certificate hostname does not match the requested domain.
-- The certificate is expired or not yet valid.
-- The local trust store does not contain the required CA.
+- Hostname mismatch.
+- Expired or not-yet-valid certificate.
+- Missing intermediate certificate.
+- Private CA not installed in the client trust store.
+- Container image missing CA certificates.
+- Runtime uses a different CA bundle than the OS.
+- Intercepting proxy or corporate MITM certificate is not trusted.
 
-## How to diagnose it
+## Fast triage order
 
-Start from the certificate the client actually sees, not from assumptions about what is installed on the server.
-
-1. Inspect the full chain presented by the server.
-2. Check the certificate subject and SAN values.
-3. Verify certificate dates.
-4. Compare a failing client with a working client to spot trust-store differences.
+1. Inspect the exact certificate chain the server sends.
+2. Check hostname and SAN values.
+3. Check certificate dates.
+4. Reproduce from the failing runtime, container, or host.
+5. Compare a working client with the failing client.
+6. Decide whether to fix the server chain or client trust store.
 
 ## Commands to try
 
+### Inspect server chain
+
 ```bash
 openssl s_client -connect <host>:443 -servername <host> -showcerts
-curl -v https://<host>
-openssl x509 -in cert.pem -text -noout
 ```
 
-## How to fix it
+### Test with curl
 
-Install the complete certificate chain on the server, correct the hostname mismatch, renew the certificate if needed, or update the local trust store if the CA is legitimately missing.
+```bash
+curl -v https://<host>
+curl -vk https://<host>
+```
 
-## FAQ
+`-k` is useful only to confirm that verification is the failing step. It is not a production fix.
 
-### Is this always a server problem?
+### Inspect certificate fields
 
-No. Some failures come from the client trust store, especially in containers, custom runtimes, or minimal Linux images.
+```bash
+openssl x509 -in cert.pem -noout -subject -issuer -dates
+openssl x509 -in cert.pem -noout -text | grep -A2 'Subject Alternative Name'
+```
 
-### Should I disable certificate verification to fix it?
+### Verify with a specific CA bundle
 
-No. That only hides the problem and removes a core security check.
+```bash
+openssl verify -CAfile ca-bundle.pem server-cert.pem
+```
+
+### Test from a container
+
+```bash
+docker run --rm -it <image> sh
+curl -v https://<host>
+ls -l /etc/ssl/certs
+```
+
+## How to interpret signals
+
+| Signal | Likely cause |
+| --- | --- |
+| browser works, container fails | missing CA bundle in container |
+| all clients fail | server chain, hostname, or expiry problem |
+| only internal services fail | private CA not distributed |
+| curl works, app fails | runtime-specific trust store |
+| `-k` works but normal curl fails | verification issue, not basic reachability |
+
+## Server-side vs client-side fixes
+
+### Server-side fix
+
+Use this when the chain, hostname, or expiry is wrong:
+
+- install full certificate chain;
+- include intermediate certificates;
+- issue certificate for the correct hostname;
+- renew expired certificates.
+
+### Client-side fix
+
+Use this when the certificate is valid but the client lacks trust:
+
+- install the private root CA;
+- update container CA bundle;
+- configure runtime-specific trust store;
+- document CA distribution for all deployment environments.
+
+## What not to do
+
+- Do not permanently disable verification.
+- Do not ship `curl -k` behavior into code.
+- Do not copy the leaf certificate into a trust store when you should install the root CA.
+- Do not assume host trust store applies inside containers or language runtimes.
 
 ## Short checklist
 
-- Inspect the chain actually sent by the server
-- Check hostname match and validity dates
-- Compare trust stores between working and failing clients
+- Inspect the chain with SNI.
+- Check SAN hostname and certificate dates.
+- Reproduce from the failing runtime.
+- Separate server chain defects from client trust-store gaps.
+- Fix trust intentionally; do not disable verification.
