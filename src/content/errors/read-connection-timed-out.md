@@ -27,6 +27,15 @@ DNS -> TCP connect -> TLS -> request write -> response read
 
 The read timeout lives near the end of that path. It may happen before the first byte, between response chunks, or while reading a long response body.
 
+That distinction matters because the owner changes:
+
+- slow first byte usually points to upstream work, proxy queueing, or dependency latency;
+- slow body chunks usually point to streaming, buffering, receiver pressure, or downstream backpressure;
+- exact-duration failures often point to a configured timeout;
+- variable-duration failures often point to resource contention or packet loss.
+
+Do not treat every read timeout as "the network is slow." A read timeout is a symptom of no bytes arriving soon enough at a specific read point.
+
 ## Common causes
 
 - Upstream application accepted the request but is slow to produce a response.
@@ -35,6 +44,22 @@ The read timeout lives near the end of that path. It may happen before the first
 - Proxy or firewall stalls idle flows.
 - Response body streaming pauses longer than the read timeout.
 - Timeout values are shorter than real p95 or p99 response latency.
+
+## Build a timeout timeline
+
+For production debugging, draw the request as a timeline:
+
+```text
+client start
+  -> DNS resolved
+  -> TCP connected
+  -> TLS completed
+  -> request fully written
+  -> first response byte received
+  -> response body completed
+```
+
+Then write the elapsed time at each point. The fix for a 10-second wait before first byte is different from a 10-second pause halfway through a 500 MB response.
 
 ## Fast triage order
 
@@ -57,6 +82,18 @@ curl -s -o /dev/null \
 
 If `connect` is low but `first_byte` is high, the problem is usually upstream processing or a proxy path, not basic reachability.
 
+Run it more than once:
+
+```bash
+for i in $(seq 1 10); do
+  curl -s -o /dev/null \
+    -w "$i connect=%{time_connect} first_byte=%{time_starttransfer} total=%{time_total}\n" \
+    https://<host>/<path>
+done
+```
+
+One clean run does not disprove an intermittent read timeout.
+
 ### Check sockets and retransmissions
 
 ```bash
@@ -72,12 +109,22 @@ tcpdump -nn -i any host <peer-ip> and port <port>
 
 Use this to see whether packets stop, retransmit, or get reset.
 
+For long-running responses, include timestamps:
+
+```bash
+tcpdump -tttt -nn -i any host <peer-ip> and port <port>
+```
+
+Timestamps help match the packet-level gap to the application read deadline.
+
 ### Compare service logs
 
 ```bash
 journalctl -u your-service --since -30m
 journalctl -u nginx --since -30m
 ```
+
+If possible, compare access-log request time, upstream response time, and application handler timing. A client-side timeout with no upstream log suggests the request may not have reached the service. A client-side timeout with a long upstream duration suggests the service received it but did not produce bytes quickly enough.
 
 ## How to interpret signals
 
@@ -88,6 +135,19 @@ journalctl -u nginx --since -30m
 | retransmissions increase | packet loss or receiver pressure |
 | only one endpoint fails | endpoint-specific app or dependency issue |
 | failures cluster at exact idle duration | proxy or firewall idle timeout |
+| first byte is fast, total is slow | body streaming or receiver-side slowness |
+| app logs finish after client timeout | timeout budget is shorter than real work |
+| upstream logs are missing | proxy routing, connection reuse, or earlier hop problem |
+
+## Timeout budgets should be layered
+
+Timeouts should usually become shorter as you move outward from the user-facing edge to internal dependencies. For example:
+
+```text
+browser/client budget > edge proxy budget > app handler budget > database/API budget
+```
+
+If the outer client times out before the inner dependency does, the system wastes work after the caller has already given up. If every layer has the same 30-second timeout, you may get ambiguous failures where the wrong component reports the symptom.
 
 ## How to fix it
 
@@ -97,11 +157,15 @@ journalctl -u nginx --since -30m
 - inspect DB/cache/API latency;
 - add server-side timing logs.
 
+Add timing logs around major dependency calls instead of only logging the total request duration. Total time tells you that the request was slow; phase timing tells you where it was slow.
+
 ### If response body stalls
 
 - inspect streaming code;
 - check proxy buffering;
 - reduce large response payloads or flush intentionally.
+
+For streaming endpoints, make sure the application intentionally emits data within the configured idle/read timeout. If no bytes are sent for longer than the proxy read timeout, a perfectly healthy long-running job can still be cut off.
 
 ### If packet loss is involved
 
@@ -113,6 +177,16 @@ journalctl -u nginx --since -30m
 - align client, proxy, load balancer, and upstream read/idle timeouts;
 - do not simply set all values very high.
 
+Increasing read timeouts is acceptable only when the endpoint is intentionally long-running and the caller can usefully wait. If the endpoint is slow because of a stuck dependency, raising the timeout increases saturation and makes recovery harder.
+
+## What not to do
+
+- Do not raise timeouts before separating connect, TLS, first byte, and body phases.
+- Do not retry blindly if the server may still be processing the first request.
+- Do not ignore upstream work that continues after the client has timed out.
+- Do not use a successful ping as proof that application reads are healthy.
+- Do not make every timeout value identical across all layers.
+
 ## Short checklist
 
 - Prove connect succeeds before debugging read timeout.
@@ -120,3 +194,4 @@ journalctl -u nginx --since -30m
 - Compare client-side wait with upstream logs.
 - Check retransmissions during the stalled window.
 - Tune read deadlines only after finding the slow phase.
+- Make timeout budgets explicit so the right layer fails first.
