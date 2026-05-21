@@ -29,6 +29,8 @@ The "client" may be:
 - a load balancer in front of Nginx;
 - another proxy between the real user and Nginx.
 
+This makes 499 easy to misread. It says the downstream side closed first from Nginx's perspective. It does not automatically prove the human user canceled the request. A front-door load balancer, API gateway, service mesh sidecar, or mobile network can be the "client" that closes.
+
 ## Common causes
 
 - Slow upstream response causes user or client timeout.
@@ -37,6 +39,16 @@ The "client" may be:
 - Large or streaming responses take too long.
 - Mobile or unstable networks disconnect.
 - Upstream stalls and the downstream path gives up.
+
+## Treat 499 as a timing problem first
+
+The most useful 499 question is:
+
+```text
+Did the downstream timeout expire before the upstream produced useful bytes?
+```
+
+If yes, fixing 499 usually means reducing upstream latency, changing response shape, or aligning timeout budgets. If no, the 499 may be normal cancellation noise.
 
 ## Fast triage order
 
@@ -55,10 +67,24 @@ log_format timed '$remote_addr "$request" $status '
     'request_time=$request_time '
     'upstream_status=$upstream_status '
     'upstream_response_time=$upstream_response_time '
+    'body_bytes_sent=$body_bytes_sent '
+    'request_length=$request_length '
     'upstream_addr=$upstream_addr';
 ```
 
 `499` with high `upstream_response_time` usually means upstream slowness caused the downstream side to give up.
+
+Add request IDs if possible:
+
+```nginx
+log_format timed '$request_id $remote_addr "$request" $status '
+    'request_time=$request_time '
+    'upstream_response_time=$upstream_response_time '
+    'upstream_status=$upstream_status '
+    'upstream_addr=$upstream_addr';
+```
+
+Then propagate the same ID to upstream logs. Without correlation, 499 analysis becomes guesswork.
 
 ## Commands to try
 
@@ -76,11 +102,23 @@ awk '$9 == 499 {print $7}' /var/log/nginx/access.log | sort | uniq -c | sort -nr
 
 Adjust the field numbers if your log format differs.
 
+### Inspect timing distribution
+
+If your log includes `request_time=...`, a quick first pass:
+
+```bash
+grep ' 499 ' /var/log/nginx/access.log | grep -o 'request_time=[0-9.]*' | sort | uniq -c | tail
+```
+
+Exact or near-exact durations often reveal a timeout boundary. For example, many 499s near 30 seconds may point to a client, load balancer, or gateway limit.
+
 ### Check Nginx config and timeouts
 
 ```bash
 nginx -T | grep -E 'timeout|proxy_read_timeout|keepalive'
 ```
+
+Also inspect front-door timeout settings outside Nginx. Cloud load balancers, API gateways, ingress controllers, and service meshes may close earlier than Nginx.
 
 ### Compare upstream behavior
 
@@ -89,6 +127,8 @@ curl -s -o /dev/null \
   -w 'first_byte=%{time_starttransfer} total=%{time_total}\n' \
   https://<host>/<path>
 ```
+
+Run the same endpoint from inside the network if possible. A public client path and an internal Nginx-to-upstream path may have different bottlenecks.
 
 ## How to interpret signals
 
@@ -99,6 +139,20 @@ curl -s -o /dev/null \
 | 499 near exact timeout duration | client/proxy timeout limit |
 | 499 during deploys | upstream draining or restart behavior |
 | random low-volume 499s | normal user aborts may be acceptable |
+| high request time, low upstream time | slow downstream client or response transfer |
+| high upstream time before close | upstream latency makes client give up |
+| no upstream status | request closed before upstream response or before proxying |
+| one load balancer source dominates | front-door timeout or health issue |
+
+## Timeout budget alignment
+
+A healthy stack should fail in a predictable order. For example:
+
+```text
+client timeout > front load balancer timeout > Nginx proxy timeout > upstream dependency timeout
+```
+
+This is not a universal formula, but the principle matters: inner layers should stop expensive work before outer layers abandon the request. If a browser or load balancer gives up at 30 seconds while the upstream keeps working for 60 seconds, 499s are expected and the server wastes work.
 
 ## How to fix it
 
@@ -108,10 +162,14 @@ curl -s -o /dev/null \
 - check DB/cache/API latency;
 - reduce queueing and worker saturation.
 
+Start with the endpoint that contributes the most 499 volume multiplied by request time. A rare 499 on a long report export may be less important than frequent 499s on a core API.
+
 ### If timeout mismatch is the cause
 
 - align browser/client, load balancer, Nginx, and upstream timeout budgets;
 - make inner dependency timeouts shorter and more observable.
+
+Do not just raise Nginx timeouts. If the caller gives up earlier, Nginx waiting longer does not improve the user experience.
 
 ### If large responses trigger 499
 
@@ -120,10 +178,21 @@ curl -s -o /dev/null \
 - stream intentionally;
 - avoid holding connections open longer than client limits.
 
+For downloads, log bytes sent. If most 499s send many bytes before closing, the issue may be client bandwidth, download cancellation, or a response that is too large for the path.
+
 ### If user cancels are normal
 
 - reduce log noise;
 - track the rate instead of treating every 499 as an incident.
+
+A baseline of low-volume 499s is normal for browser traffic. Investigate spikes, concentration by endpoint, exact timeout boundaries, and correlation with upstream latency.
+
+## What not to change first
+
+- Do not raise `proxy_read_timeout` before proving the upstream needs more time and the client will still wait.
+- Do not treat all 499s as errors in alerting without rate and endpoint context.
+- Do not ignore the proxy or load balancer in front of Nginx.
+- Do not optimize random endpoints before ranking by volume and user impact.
 
 ## What not to assume
 
@@ -139,3 +208,4 @@ curl -s -o /dev/null \
 - Check front-door load balancer and client timeout values.
 - Separate normal user aborts from systematic slow paths.
 - Fix upstream slowness before changing timeout budgets.
+- Add request IDs and timing fields so 499 analysis has evidence.
