@@ -97,7 +97,7 @@ for i in $(seq 1 10); do
 done
 ```
 
-High variance is often a stronger clue than one high value.
+High variance is usually more actionable than one isolated high value when it repeats during the user-impact window.
 
 ### Inspect TCP state
 
@@ -204,7 +204,7 @@ Include source, destination, protocol, timestamps, and observed application impa
 - check database/cache/API timing;
 - compare proxy logs with app logs.
 
-Add timing around each major dependency. A single `duration=2500ms` log line is less useful than knowing `db=1800ms cache=20ms external_api=500ms`.
+Add timing around each major dependency. For example, a single `duration=2500ms` log line is less useful than a phase breakdown such as `db=1800ms cache=20ms external_api=500ms`. Those numbers are illustrative; use your own measured timings.
 
 ### If only one instance is slow
 

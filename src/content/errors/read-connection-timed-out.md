@@ -29,9 +29,9 @@ The read timeout lives near the end of that path. It may happen before the first
 
 That distinction matters because the owner changes:
 
-- slow first byte usually points to upstream work, proxy queueing, or dependency latency;
-- slow body chunks usually point to streaming, buffering, receiver pressure, or downstream backpressure;
-- exact-duration failures often point to a configured timeout;
+- slow first byte usually points to upstream work, proxy queueing, or dependency latency, but confirm with server logs;
+- slow body chunks usually point to streaming, buffering, receiver pressure, or downstream backpressure, but confirm with packet or application timing;
+- repeated failures near the same duration often point to a configured timeout;
 - variable-duration failures often point to resource contention or packet loss.
 
 Do not treat every read timeout as "the network is slow." A read timeout is a symptom of no bytes arriving soon enough at a specific read point.
@@ -141,7 +141,7 @@ If possible, compare access-log request time, upstream response time, and applic
 
 ## Timeout budgets should be layered
 
-Timeouts should usually become shorter as you move outward from the user-facing edge to internal dependencies. For example:
+Timeouts are easier to reason about when inner dependency deadlines are shorter than the outer user-facing deadline. For example:
 
 ```text
 browser/client budget > edge proxy budget > app handler budget > database/API budget

@@ -87,7 +87,7 @@ kubectl exec -it <pod> -- nslookup kubernetes.default.svc.cluster.local
 kubectl get svc -n kube-system
 ```
 
-Pod DNS failures are often caused by CoreDNS, node-local DNS cache, NetworkPolicy, or CNI path issues rather than public DNS.
+In Kubernetes environments, pod DNS failures commonly involve CoreDNS, node-local DNS cache, NetworkPolicy, or CNI path issues rather than public DNS.
 
 ### Query a specific resolver
 
@@ -116,7 +116,7 @@ nc -vz <dns-server-ip> 53
 
 Ping may be blocked even when DNS works, so treat it as one signal, not final proof.
 
-For UDP 53, `nc -vz` is not enough because DNS usually uses UDP first. Use `dig` for the real protocol test.
+For UDP 53, `nc -vz` is not enough because DNS commonly uses UDP first. Use `dig` for the real protocol test.
 
 If routing is suspicious:
 

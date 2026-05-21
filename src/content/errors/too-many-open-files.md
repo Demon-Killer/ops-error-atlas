@@ -44,7 +44,7 @@ Linux has multiple relevant limits:
 
 | Scope | Where to check | Why it matters |
 | --- | --- | --- |
-| process soft/hard limit | `/proc/<pid>/limits` | most common service failure |
+| process soft/hard limit | `/proc/<pid>/limits` | common service-level failure point |
 | systemd service limit | `systemctl show ... -p LimitNOFILE` | shell `ulimit` may not apply |
 | user/session limit | PAM or shell limits | affects manually started processes |
 | system-wide file table | `/proc/sys/fs/file-nr` | affects the whole host |
@@ -133,11 +133,11 @@ Useful socket-state clues:
 | State | Interpretation |
 | --- | --- |
 | `ESTABLISHED` | active or stuck connections |
-| `CLOSE-WAIT` | peer closed; application has not closed its side |
+| `CLOSE-WAIT` | peer closed; application has not closed its side yet |
 | `SYN-SENT` | outbound connects waiting or failing |
 | `TIME-WAIT` | recently closed sockets, usually not a descriptor held by the process |
 
-`CLOSE-WAIT` growth is almost always an application cleanup problem.
+Sustained `CLOSE-WAIT` growth is strong evidence of an application cleanup problem, especially when the count does not fall after traffic drops.
 
 ### Check system-wide usage
 
@@ -161,9 +161,9 @@ cat /proc/sys/fs/file-max
 | fd count high after traffic drops | leak or stuck cleanup |
 | fd count proportional to in-flight work | legitimate capacity sizing |
 
-## Capacity sizing rule of thumb
+## Capacity sizing model
 
-Estimate descriptor demand before choosing a limit:
+Estimate descriptor demand before choosing a limit. This is a sizing model, not a universal formula:
 
 ```text
 inbound connections

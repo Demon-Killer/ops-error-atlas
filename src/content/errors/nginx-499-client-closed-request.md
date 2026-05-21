@@ -110,7 +110,7 @@ If your log includes `request_time=...`, a quick first pass:
 grep ' 499 ' /var/log/nginx/access.log | grep -o 'request_time=[0-9.]*' | sort | uniq -c | tail
 ```
 
-Exact or near-exact durations often reveal a timeout boundary. For example, many 499s near 30 seconds may point to a client, load balancer, or gateway limit.
+Repeated durations near the same value often reveal a timeout boundary. For example, if many 499s cluster near a configured 30-second client, load balancer, or gateway timeout, that timeout becomes a strong suspect.
 
 ### Check Nginx config and timeouts
 
@@ -136,7 +136,7 @@ Run the same endpoint from inside the network if possible. A public client path 
 | --- | --- |
 | 499 spikes with upstream latency | upstream too slow |
 | 499 only on large downloads | slow client, buffering, or response size |
-| 499 near exact timeout duration | client/proxy timeout limit |
+| 499s cluster near the same duration | client/proxy timeout boundary |
 | 499 during deploys | upstream draining or restart behavior |
 | random low-volume 499s | normal user aborts may be acceptable |
 | high request time, low upstream time | slow downstream client or response transfer |
@@ -152,7 +152,7 @@ A healthy stack should fail in a predictable order. For example:
 client timeout > front load balancer timeout > Nginx proxy timeout > upstream dependency timeout
 ```
 
-This is not a universal formula, but the principle matters: inner layers should stop expensive work before outer layers abandon the request. If a browser or load balancer gives up at 30 seconds while the upstream keeps working for 60 seconds, 499s are expected and the server wastes work.
+This is not a universal formula, but the principle matters: inner layers should stop expensive work before outer layers abandon the request. For example, if a browser or load balancer is configured with a shorter timeout than the upstream work budget, 499s are expected under slow upstream responses and the server may waste work.
 
 ## How to fix it
 
@@ -185,7 +185,7 @@ For downloads, log bytes sent. If most 499s send many bytes before closing, the 
 - reduce log noise;
 - track the rate instead of treating every 499 as an incident.
 
-A baseline of low-volume 499s is normal for browser traffic. Investigate spikes, concentration by endpoint, exact timeout boundaries, and correlation with upstream latency.
+A baseline of low-volume 499s can be normal for browser traffic. Investigate spikes, concentration by endpoint, repeated timeout boundaries, and correlation with upstream latency.
 
 ## What not to change first
 

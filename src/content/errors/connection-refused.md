@@ -47,7 +47,7 @@ protocol: tcp
 namespace: host, container, pod, or proxy
 ```
 
-Refused connections are often caused by one wrong assumption: the client is not connecting to the host, port, or network namespace that the operator is checking.
+Refused connections are frequently caused by one wrong assumption: the client is not connecting to the host, port, or network namespace that the operator is checking.
 
 ## Fast triage order
 
@@ -109,7 +109,7 @@ iptables -L -n
 nft list ruleset
 ```
 
-Reject rules often produce fast failures. Drop rules more often produce timeouts.
+Reject rules tend to produce fast failures. Drop rules tend to produce timeouts because the client receives no explicit response.
 
 If you see `REJECT --reject-with tcp-reset`, the firewall can intentionally make a blocked port look like a real refusal from the host.
 

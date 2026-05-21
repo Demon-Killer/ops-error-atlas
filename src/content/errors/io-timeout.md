@@ -31,7 +31,7 @@ Many runtimes collapse different lower-level failures into `i/o timeout`. A serv
 
 Your first task is to identify the dependency and phase.
 
-The phrase is especially common in Go, Java, Node.js, Python, and database clients because runtimes often wrap lower-level socket or storage waits into a generic timeout error. Treat the message as a starting point, not a diagnosis.
+The phrase appears in many Go, Java, Node.js, Python, and database-client stacks because runtimes and libraries may wrap lower-level socket or storage waits into a generic timeout error. Treat the message as a starting point, not a diagnosis.
 
 ## Common causes
 
@@ -148,7 +148,7 @@ If requests spend most of their deadline waiting for a local connection from the
 | first byte high | upstream app or dependency latency |
 | storage await high | disk or storage backend pressure |
 | pool wait high | local concurrency or pool sizing problem |
-| timeout happens at exact duration | configured deadline reached |
+| timeout repeatedly happens near the same duration | configured deadline or upstream timeout boundary |
 | timeouts spike after retry storm | overload amplification |
 | one dependency dominates | dependency-specific capacity or latency |
 

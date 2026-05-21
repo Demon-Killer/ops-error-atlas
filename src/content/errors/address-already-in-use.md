@@ -15,7 +15,7 @@ related:
   - socket-hang-up
 ---
 
-`address already in use` means a process tried to bind an IP and port that the kernel cannot currently assign to it. The most common cause is simple: another process is already listening. But in production, restart races, stale workers, systemd socket activation, containers, and socket reuse behavior can make the error less obvious.
+`address already in use` means a process tried to bind an IP and port that the kernel cannot currently assign to it. A common first suspect is simple: another process may already be listening. But in production, restart races, stale workers, systemd socket activation, containers, and socket reuse behavior can make the error less obvious.
 
 ## What it means
 
@@ -34,7 +34,7 @@ The details matter:
 - TCP and UDP are separate protocols, so a TCP listener does not automatically conflict with UDP on the same port.
 - A host port and a container-internal port are not the same thing.
 
-Most bad fixes happen because the exact bind address is not identified before killing processes or changing ports.
+Many bad fixes happen because the exact bind address is not identified before killing processes or changing ports.
 
 ## Common causes
 
@@ -139,7 +139,7 @@ kubectl get svc
 
 ## TIME_WAIT and reuse behavior
 
-`TIME_WAIT` is often blamed incorrectly. A normal server listener usually should not fail to bind just because old client connections are in `TIME_WAIT`, especially when the server is binding a listening socket properly.
+`TIME_WAIT` is often blamed incorrectly. A normal server listener should not be assumed to fail just because old client connections are in `TIME_WAIT`; first verify whether another listener, socket activation, or a process-model issue owns the address.
 
 Investigate `SO_REUSEADDR` or `SO_REUSEPORT` only when:
 

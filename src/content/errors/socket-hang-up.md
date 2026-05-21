@@ -153,7 +153,7 @@ Without that evidence, common fixes become guesswork. Increasing timeouts may hi
 - reduce client keepalive lifetime below server idle timeout;
 - temporarily disable keepalive to confirm the cause.
 
-Good rule: the client should stop reusing idle sockets before the server or load balancer is allowed to close them. If the load balancer closes idle connections after 60 seconds, the client pool should retire sockets earlier than that, not later.
+Good rule: the client should stop reusing idle sockets before the server or load balancer is allowed to close them. If the load balancer has a configured idle timeout, the client pool should retire sockets earlier than that timeout, not later.
 
 ### If upstream closes early
 

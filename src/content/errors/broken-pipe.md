@@ -28,7 +28,7 @@ In network services, `broken pipe` often appears when:
 
 At the system-call level, the write path fails because the receiving side is gone. That does not always mean your server is broken. It may mean the client, proxy, or middle layer gave up first.
 
-The error is usually delayed. The peer may have closed seconds earlier, but your process only discovers it on the next write. That is why the last stack trace is rarely enough to identify the first failure.
+The error can be delayed. The peer may have closed earlier, but your process only discovers it on the next write. That is why the last stack trace is rarely enough to identify the first failure.
 
 ## Common causes
 
@@ -68,7 +68,7 @@ Each path has different owners. A large file failure may be slow-client behavior
 | Signal | Likely direction |
 | --- | --- |
 | Proxy logs `499` | Client closed before the server finished |
-| Large responses fail more often | Slow writes, buffering, or downstream timeout |
+| Large responses fail more frequently than small ones | Slow writes, buffering, or downstream timeout |
 | Errors appear after idle periods | Keepalive or idle timeout mismatch |
 | App logs continue work after cancel | Missing cancellation handling |
 | Packet capture shows peer `RST` | Peer or middlebox reset the connection |
@@ -147,7 +147,7 @@ tcpdump -nn -i any host <peer-ip> and port <port>
 
 Look for which side sends `FIN` or `RST` first.
 
-`FIN` usually means graceful close. `RST` usually means abortive close. Both can lead to a later broken pipe when the application tries to write again.
+`FIN` indicates an orderly TCP close path. `RST` indicates an abortive reset path. Both can lead to a later broken pipe when the application tries to write again after the peer is gone.
 
 ## How to fix it
 
