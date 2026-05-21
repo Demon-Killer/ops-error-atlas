@@ -23,6 +23,8 @@ This error is different from a timeout. With a timeout, the client waits and rec
 
 That makes it easier to debug than many network errors.
 
+The useful property of this error is that the path usually reached something that could reject the connection. That "something" may be the target host kernel, a firewall, a proxy, a container boundary, or a load balancer. The next step is to prove which layer rejected the SYN.
+
 ## Common causes
 
 - The service is not running.
@@ -31,6 +33,21 @@ That makes it easier to debug than many network errors.
 - A container exposes a port internally but not on the host.
 - Kubernetes Service, Docker port mapping, or security group configuration is wrong.
 - A firewall is actively rejecting the connection.
+
+## First prove the connection target
+
+Write down the exact tuple:
+
+```text
+client source:
+destination hostname:
+resolved destination IP:
+destination port:
+protocol: tcp
+namespace: host, container, pod, or proxy
+```
+
+Refused connections are often caused by one wrong assumption: the client is not connecting to the host, port, or network namespace that the operator is checking.
 
 ## Fast triage order
 
@@ -76,6 +93,15 @@ curl -v http://127.0.0.1:port/
 
 If local curl works but remote curl fails, suspect bind address, firewall, container mapping, or routing.
 
+Also test the concrete IP that DNS returned:
+
+```bash
+getent hosts host
+nc -vz <resolved-ip> <port>
+```
+
+If DNS returns multiple IPs, test each one. One bad backend behind a service record can create intermittent `connection refused` even when most requests work.
+
 ### Check firewall behavior
 
 ```bash
@@ -84,6 +110,8 @@ nft list ruleset
 ```
 
 Reject rules often produce fast failures. Drop rules more often produce timeouts.
+
+If you see `REJECT --reject-with tcp-reset`, the firewall can intentionally make a blocked port look like a real refusal from the host.
 
 ### In Docker
 
@@ -95,6 +123,24 @@ docker logs <container>
 
 Verify that the container port is actually published to the host.
 
+Remember the namespace boundary:
+
+```text
+127.0.0.1 inside container != 127.0.0.1 on host
+```
+
+If the service binds only to localhost inside the container, it may be reachable from inside the container but not from another container or the host-published path.
+
+### In Kubernetes
+
+```bash
+kubectl get svc,endpoints,pod -o wide
+kubectl describe svc <service>
+kubectl exec -it <pod> -- nc -vz <service-name> <port>
+```
+
+Check whether the Service has endpoints. A Service with no ready endpoints may send traffic nowhere, while a pod listening on the wrong port can still look healthy from a shallow readiness check.
+
 ## How to separate it from similar errors
 
 | Error | Meaning |
@@ -104,6 +150,17 @@ Verify that the container port is actually published to the host.
 | `no route to host` | Routing or host reachability failed |
 | `connection reset by peer` | Connection existed, then peer reset it |
 
+## Decision table
+
+| Evidence | Likely cause | Next check |
+| --- | --- | --- |
+| no listener in `ss -ltnp` | service not running or wrong port | service logs and startup config |
+| listener on `127.0.0.1` only | bind address too narrow | bind config and exposure requirements |
+| local works, remote refused | firewall, bind address, or port publishing | remote test and firewall rules |
+| one DNS IP refused | bad target behind DNS/load balancer | remove or fix that target |
+| container local works, host fails | Docker port publishing or namespace issue | `docker port` and bind address |
+| Kubernetes Service has no endpoints | selector/readiness issue | pod labels, readiness, targetPort |
+
 ## How to fix it
 
 ### If the service is not running
@@ -112,11 +169,15 @@ Verify that the container port is actually published to the host.
 - inspect crash logs;
 - check whether it failed to bind because the port is already used.
 
+Do not stop at "service active." A supervisor can report active while the application failed to bind the expected port. Confirm with `ss -ltnp`.
+
 ### If the bind address is wrong
 
 - bind to the intended interface;
 - use `0.0.0.0` only when the service should be reachable externally;
 - keep admin-only services bound to localhost.
+
+For IPv6, verify whether the service listens on `::`, `::1`, or IPv4 addresses. Dual-stack behavior differs by runtime and OS configuration.
 
 ### If the port is wrong
 
@@ -130,12 +191,23 @@ Verify that the container port is actually published to the host.
 - check container network mode;
 - verify service names inside the same Docker network or Kubernetes namespace.
 
+For Kubernetes, verify `port`, `targetPort`, pod readiness, and NetworkPolicy. A wrong `targetPort` is a common cause of a Service that exists but cannot reach the container listener.
+
+### If a firewall rejects the connection
+
+- confirm the rule is intentional;
+- allow only the required source CIDR, destination port, and protocol;
+- prefer a specific allow rule over disabling the firewall;
+- document whether blocked clients should see reject or timeout behavior.
+
 ## Common mistakes
 
 - Debugging DNS first even though the host already rejected the connection.
 - Testing only on the server with `localhost`.
 - Forgetting that `127.0.0.1` inside a container is not the host.
 - Treating refusal and timeout as the same class of problem.
+- Declaring the service healthy without checking the actual listening socket.
+- Testing only one IP when the hostname resolves to multiple targets.
 
 ## Short checklist
 
@@ -144,3 +216,4 @@ Verify that the container port is actually published to the host.
 - Compare local vs remote connection attempts.
 - Inspect bind address before changing firewall rules.
 - For containers, verify published ports and network scope.
+- Test each resolved IP when failures are intermittent.
