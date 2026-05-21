@@ -1,18 +1,29 @@
 # Ops Error Atlas
 
-An English technical content site focused on backend and network errors. The first release is designed to validate a simple loop:
+Ops Error Atlas is an English technical content site focused on backend, Linux, network, Nginx, DNS, TCP, and TLS troubleshooting.
 
-`build -> deploy -> index -> traffic -> later AdSense review`
+The project is designed to validate a practical publishing loop:
+
+`research -> build -> deploy -> index -> improve -> monetize`
+
+Live site:
+
+```text
+https://ops-error-atlas.pages.dev/
+```
 
 ## What is included
 
 - Home page
 - Error guide index
-- 5 starter error articles
+- 20+ focused troubleshooting guides
 - `Error Explainer` rule-based tool
 - About, Privacy, Contact pages
 - `robots.txt`
 - `sitemap`
+- `ads.txt`
+- Google Search Console verification tag
+- Google AdSense site code
 
 ## Local development
 
@@ -133,30 +144,34 @@ You can keep this free subdomain for testing before buying a custom domain.
 
 ## Before Search Console submission
 
-Replace these placeholders first:
+The site already includes:
 
-- the site URL in `astro.config.mjs` if your final `pages.dev` project name differs
+- public `robots.txt`
+- public sitemap
+- Google site verification meta tag
+- canonical production URL configured for the current Cloudflare Pages domain
 
-## Before AdSense preparation
+## AdSense preparation
 
-Do not apply too early. First reach:
+The site already includes the core AdSense preparation items:
 
-- at least 15 to 30 focused content pages
-- a complete About page
-- a complete Privacy page
-- a working Contact page
-- real index coverage in Google Search Console
+- complete About page
+- complete Privacy page
+- working Contact page
+- focused technical content library
+- AdSense site script
+- `ads.txt` at the site root
 
 ## Current gaps
 
 - No custom domain yet
-- No analytics snippet yet
-- Only 5 articles so far
+- No privacy-friendly analytics snippet yet
+- Search indexing is still early
+- AdSense approval is still pending
 
 ## Suggested next step
 
-1. Deploy to Cloudflare Pages
-2. Confirm the public `pages.dev` URL
-3. Update `astro.config.mjs` with the final URL
-4. Add 10 more articles
-5. Submit the site to Google Search Console
+1. Keep the deployed site stable while Search Console and AdSense re-check it
+2. Publish one high-quality troubleshooting guide at a steady cadence
+3. Add a custom domain when the project direction is confirmed
+4. Add privacy-friendly analytics after indexing is stable
