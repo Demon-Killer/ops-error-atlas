@@ -3,7 +3,7 @@ title: How to debug intermittent packet loss
 description: A practical guide to intermittent packet loss that explains how to prove timing, direction, path, host counters, queue drops, and application impact.
 slug: intermittent-packet-loss
 publishedAt: 2026-05-03
-updatedAt: 2026-05-20
+updatedAt: 2026-05-29
 tags:
   - networking
   - packet-loss
@@ -15,70 +15,73 @@ related:
   - read-connection-timed-out
 ---
 
-Intermittent packet loss is harder than a complete outage because the path looks healthy part of the time. You need to prove when loss happens, which direction is affected, which path is involved, and whether the loss correlates with traffic bursts, interface errors, queue drops, or overloaded receivers.
+Intermittent packet loss is hard because the path is healthy part of the time. A single clean `ping` proves almost nothing. A single `mtr` line with loss at a middle hop may also prove almost nothing. You need to prove the time window, direction, path, traffic class, host counters, and application impact.
 
-## What it means
-
-Packets are being dropped only sometimes. The trigger may be:
-
-- burst traffic;
-- one upstream provider;
-- one interface;
-- one host;
-- one region;
-- one time window;
-- one traffic class.
-
-The mistake is taking one clean ping result and declaring the path healthy.
-
-The second mistake is assuming packet loss is always in the provider network. Loss can happen before a packet leaves the host, inside a virtual switch, at a NAT gateway, in a firewall appliance, on the return path, or inside an overloaded receiver that cannot drain packets fast enough.
-
-## Common causes
-
-- Queue drops during traffic bursts.
-- Interface errors, bad cables, or unstable links.
-- Firewall, NAT, VPN, or appliance limits.
-- Congestion on one provider or route.
-- Receiver CPU pressure delaying packet processing.
-- Asymmetric routing where only one direction is bad.
-
-## Define the loss precisely
-
-Before collecting commands, define the incident in operational terms:
+The useful question is:
 
 ```text
-source:
-destination:
+Which packets were lost, in which direction, on which path, during which time window, and did that loss correlate with user-visible latency or timeouts?
+```
+
+Until you can answer that, "packet loss" is a suspicion, not a diagnosis.
+
+## Define The Incident Before Running Tools
+
+Write the scope first:
+
+```text
+source IP/subnet:
+destination IP/subnet:
 protocol and port:
+application route:
 time window:
 failure rate:
-affected region or subnet:
+affected clients/regions:
+unaffected clients/regions:
 application symptom:
 ```
 
-Without source and destination pairs, "packet loss" is too vague to fix. Loss from one office to one region does not prove loss from your production service to its database. Loss in ICMP does not always prove loss in TCP application traffic.
+This matters because loss is path-specific. Loss from your laptop to an edge host does not prove loss from a production pod to a database. ICMP（Internet Control Message Protocol，用于 ping/mtr 的控制报文）loss does not automatically prove TCP（Transmission Control Protocol，传输控制协议）application loss. A clean ping does not prove HTTPS, database, or service-mesh traffic is healthy.
 
-## Fast triage order
+## What Intermittent Loss Can Mean
 
-1. Record the exact time window when users report failures.
-2. Compare affected and unaffected destinations.
-3. Run repeated path measurements, not one snapshot.
-4. Check interface counters and TCP retransmissions.
-5. Capture traffic on both ends if possible.
-6. Correlate loss with traffic volume, CPU, deploys, and provider events.
+Packets may disappear or be delayed in several places:
 
-## Commands to try
+| Location | What drops or delays packets | First evidence |
+| --- | --- | --- |
+| Source host | NIC queue, veth, bridge, CNI, firewall, conntrack, CPU/softirq pressure | `ip -s link`, `ethtool -S`, `/proc/softirqs`, host CPU |
+| Forward path | provider route, VPN, firewall, NAT, load balancer, congested link | two-sided capture, `mtr`, retransmission deltas |
+| Destination host | receive queue, app not reading, CPU/softirq, NIC drops | `ss -ti`, receive queue, app runtime metrics |
+| Return path | ACK or response packets lost on the way back | source sees retransmits, destination saw original data |
+| Middle appliance | firewall/NAT/VPN rate limit or state pressure | flow logs, conntrack/NAT metrics, path-specific failures |
+| Traffic class | only one port/protocol/QoS class affected | app traffic fails while ICMP is clean, or reverse |
 
-### Repeated path measurement
+The provider network is only one branch.
+
+## Fast Triage Order
+
+1. Pin down the affected source/destination/protocol/time window.
+2. Compare affected and unaffected paths.
+3. Check application impact: latency p95/p99, timeout rate, retry rate, error rate.
+4. Check TCP retransmission deltas during the same window.
+5. Check host and interface counters before blaming the path.
+6. Capture packets near both ends if the direction is unclear.
+7. Escalate only with source, destination, port, timestamps, and evidence.
+
+The fastest path to a wrong conclusion is running one command from the wrong network and generalizing from it.
+
+## Start With Repeated Measurements, Not One Snapshot
+
+Basic tests:
 
 ```bash
-mtr -rw <host>
 ping -c 200 <host>
+mtr -rw <host>
 ```
 
-Use these as signals, not final proof. ICMP behavior may differ from application traffic.
+These are signals, not final proof. ICMP behavior can differ from application traffic.
 
-When you need time-series evidence:
+For time-series evidence:
 
 ```bash
 for i in $(seq 1 60); do
@@ -88,155 +91,387 @@ for i in $(seq 1 60); do
 done
 ```
 
-This is crude but useful when the issue appears in short bursts.
+This is crude but useful for short bursts. If the issue is tied to traffic peaks, run the measurement during the bad window, not after.
 
-### Interface counters
+For application traffic, prefer a protocol-specific check:
 
 ```bash
-ip -s link
-ethtool -S <interface>
+for i in $(seq 1 30); do
+  date -Is
+  curl -sS -o /dev/null \
+    -w "$i remote_ip=%{remote_ip} connect=%{time_connect} first_byte=%{time_starttransfer} total=%{time_total}\n" \
+    https://example.com/path
+done
 ```
 
-Look for increments in:
+If `ping` is clean but application connect or first-byte timing spikes, do not stop. The loss may affect a specific port, route, proxy path, or overloaded receiver.
 
-- `rx_dropped`
-- `tx_dropped`
-- `rx_errors`
-- `tx_errors`
-- CRC errors
-- queue drops
+## Read mtr Without Overreacting
 
-Read counters twice during the incident. A counter that is high but not increasing may be historical. A counter that climbs during the bad window is evidence.
+`mtr` is useful, but intermediate routers may rate-limit ICMP replies to themselves. That can look like loss even when forwarding is fine.
 
-### TCP retransmission counters
+More credible pattern:
+
+```text
+loss appears at hop N
+similar or worse loss continues to later hops
+destination also shows loss or latency
+application errors rise in the same window
+```
+
+Less credible pattern:
+
+```text
+one middle hop shows loss
+later hops and destination are clean
+application traffic is healthy
+```
+
+Do not open a provider escalation with only a middle-hop loss line. Include destination impact and application symptoms.
+
+## Check TCP Retransmission Deltas
+
+TCP retransmissions are often stronger evidence than ICMP loss, especially for application traffic.
 
 ```bash
-netstat -s | grep -Ei 'retrans|timeout'
+netstat -s | grep -Ei 'retrans|timeout|segments retrans'
 sar -n TCP,ETCP 1 10
-```
-
-Rising retransmission counters during the incident are stronger evidence than occasional loss in a single test.
-
-For a specific socket:
-
-```bash
 ss -ti dst <peer-ip>
 ```
 
-Look for retransmission state, congestion window changes, and round-trip time movement.
+Read counters as deltas. A cumulative counter that is high since boot is less useful than a counter that increases during the user-impact window.
 
-### Packet capture
+Useful signals:
+
+| Signal | Interpretation |
+| --- | --- |
+| retransmissions rise with timeout rate | loss, congestion, ACK loss, or receiver pressure is affecting users |
+| RTT rises before retransmissions | queueing or congestion before loss recovery |
+| one peer has worse `ss -ti` stats | path, endpoint, or node-specific issue |
+| send queue does not drain | receiver or path backpressure |
+| retransmissions rise with CPU/softirq pressure | host may be processing packets late |
+
+Retransmission still does not prove provider loss by itself. It proves the sender had to send data again.
+
+## Inspect Interface And Host Counters
+
+On Linux:
 
 ```bash
-tcpdump -nn -i any host <peer-ip>
+ip -s link
+ip -s link show <interface>
+ethtool -S <interface>
+cat /proc/softirqs
+mpstat -P ALL 1 5
+vmstat 1 5
 ```
 
-Capture on both sides if you can. One side alone may only show symptoms, not the drop point.
+Look for counters that increase during the incident:
 
-For an application-specific check:
+- `rx_dropped`;
+- `tx_dropped`;
+- `rx_errors`;
+- `tx_errors`;
+- CRC/frame errors;
+- driver queue drops;
+- virtual interface or bridge drops;
+- softirq imbalance or saturation.
+
+Read twice:
+
+```bash
+date -Is
+ip -s link show <interface>
+sleep 60
+date -Is
+ip -s link show <interface>
+```
+
+If counters increase during the bad window, you have local evidence. If counters are high but flat, they may be historical.
+
+## Virtualized And Container Paths Matter
+
+A clean physical NIC does not rule out drops inside:
+
+- veth pairs;
+- Linux bridges;
+- overlay networks;
+- CNI datapaths;
+- service mesh sidecars;
+- conntrack/NAT tables;
+- host firewalls;
+- virtual NIC queues;
+- cloud load balancer targets.
+
+For Kubernetes, also inspect pod/node placement and whether only one node, CNI path, or sidecar version is affected. The exact commands depend on the environment, but the principle is stable: prove where packets stop or queue before changing app timeouts.
+
+## Two-Sided Capture Is The Strongest Simple Proof
+
+One packet capture shows what one machine saw. It does not prove what the other machine received.
+
+Focused capture:
 
 ```bash
 tcpdump -tttt -nn -i any host <peer-ip> and port <port>
 ```
 
-This avoids spending time on unrelated ICMP behavior when the real symptom is TCP traffic to a specific service.
+Two-sided capture:
 
-## How to interpret results
+```bash
+# source side
+tcpdump -tttt -nn -i any host <destination-ip> and port <port> -w source.pcap
 
-| Signal | Likely direction |
-| --- | --- |
-| loss increases only under high throughput | queue drops or congestion |
-| one interface shows errors | local link or NIC issue |
-| one region affected | provider or routing path |
-| application traffic fails but ping is clean | traffic-class, port, proxy, or receiver pressure |
-| retransmissions rise with CPU saturation | host cannot process traffic fast enough |
-| only return traffic is missing | asymmetric path, firewall, NAT, or reverse-route issue |
-| `mtr` shows loss at one hop but later hops are clean | ICMP rate limiting on that hop, not necessarily forwarding loss |
-| drops rise on one host only | local NIC, driver, queue, or namespace pressure |
-| loss appears only during backup or batch jobs | burst congestion or queue exhaustion |
+# destination side
+tcpdump -tttt -nn -i any host <source-ip> and port <port> -w destination.pcap
+```
 
-## One-way loss matters
+Interpretation:
 
-Packet loss can be asymmetric. The outbound path may be healthy while the return path drops packets. That is why testing from both sides, or comparing client-side and server-side captures, is valuable.
+| Source capture | Destination capture | Stronger conclusion |
+| --- | --- | --- |
+| packet leaves source, never arrives | absent | forward-path loss between capture points |
+| packet arrives at destination, ACK/response missing at source | present | return-path loss, ACK loss, firewall/NAT, or response-side issue |
+| packet never leaves source | absent | source host, firewall, queue, or application did not send |
+| packet arrives late in bursts | present late | queueing, buffering, congestion, or receiver pressure |
+| destination receives original, source retransmits | present | ACK path loss, capture placement, or timing/capture artifact |
 
-Two-sided capture is the strongest simple proof:
+Synchronize clocks when possible. Without timestamps from both ends, direction claims are weaker.
 
-- packet leaves source but never arrives at destination: path loss;
-- packet arrives at destination but response never reaches source: return-path loss;
-- packet never leaves source: host, firewall, or local queue problem;
-- response is delayed by the destination: receiver pressure or application scheduling.
+## Case 1: Real Forward-Path Loss
 
-## Reading mtr without overreacting
+Strong signals:
 
-`mtr` is useful, but intermediate routers may rate-limit ICMP replies. Loss shown at an intermediate hop is only meaningful when the same or worse loss continues to later hops, especially the destination.
+- source capture shows packets leaving;
+- destination capture does not show them;
+- retransmissions rise at the source;
+- application timeouts or latency rise in the same window;
+- issue is path-specific, not global.
 
-More reliable pattern:
+Fix path:
 
-- destination loss increases during the same window users report failures;
-- latency and loss rise together at the destination;
-- multiple sources show the same bad final path;
-- TCP retransmissions rise at the same time.
+- compare affected and unaffected routes;
+- check local interface and virtual network counters first;
+- check firewall/NAT/VPN/load balancer paths;
+- escalate with source, destination, protocol, port, and UTC timestamps;
+- include packet capture evidence and application impact.
 
-Less reliable pattern:
+Provider escalations need concrete flow evidence. "mtr shows loss" is usually not enough.
 
-- one middle hop shows loss, but all later hops are clean;
-- only ICMP fails while application traffic and TCP metrics look normal;
-- tests are run after the incident window has passed.
+## Case 2: Return-Path Or ACK Loss
 
-## What not to do
+Strong signals:
 
-- Do not rely on one `ping`.
-- Do not assume no ICMP loss means no application loss.
-- Do not ignore host counters.
-- Do not escalate to a provider without timestamps, paths, and evidence.
-- Do not treat every `mtr` middle-hop loss line as packet forwarding loss.
+- destination receives original data;
+- source retransmits because ACK or response does not arrive;
+- destination-side capture shows ACK/response leaving;
+- source-side capture does not see it;
+- only one direction or asymmetric path is affected.
 
-## How to fix it
+Fix path:
 
-### If the host interface is dropping packets
+- compare route in both directions;
+- inspect firewalls, NAT, VPN, service mesh, and routing policies;
+- check stateful middleboxes for table pressure or asymmetric routing;
+- collect captures on both sides of the suspected middlebox if possible.
 
-- inspect NIC, driver, cable, and switch port;
-- check interrupt and CPU saturation;
-- review queue settings only after confirming drops.
+Return-path loss is easy to miss if you only capture on the sender.
 
-Also check whether drops happen inside a container or virtual network path, not only on the physical interface. A clean host NIC does not rule out veth, bridge, overlay, or pod-level drops.
+## Case 3: Host Or Interface Drops
 
-### If loss appears on one path
+Strong signals:
 
-- compare routes from multiple locations;
-- collect `mtr` during the bad window;
-- escalate with timestamps and destination/source pairs.
+- `ip -s link` or `ethtool -S` counters increase during the incident;
+- drops are isolated to one node or interface;
+- softirq or CPU pressure rises with loss;
+- application traffic on that host shows timeouts while other hosts are fine.
 
-Provider escalations are more effective when they include: source IP, destination IP, UTC timestamps, protocol/port, sample packet loss rate, traceroute or `mtr` output during the incident, and whether the return path was tested.
+Fix path:
 
-### If loss appears under bursts
+- inspect NIC, driver, queue, offload, cable/switch port if physical;
+- inspect veth/bridge/CNI path if virtualized;
+- check interrupt distribution and CPU saturation;
+- reduce burst pressure or add capacity where the queue forms;
+- validate under comparable traffic.
+
+Do not reset or replace the host before capturing counter deltas if you need root cause.
+
+## Case 4: Congestion Or Queue Drops Under Bursts
+
+Strong signals:
+
+- loss appears only during batch jobs, backups, deploys, traffic spikes, or retry storms;
+- throughput rises before loss;
+- latency rises before packet loss;
+- queue or drop counters rise;
+- retries amplify the incident.
+
+Fix path:
 
 - reduce burst size;
-- shape traffic earlier;
-- inspect queue lengths and buffer pressure;
-- scale receivers or upstream workers.
+- shape traffic closer to the source;
+- add capacity at the bottleneck queue;
+- bound retries with backoff and jitter;
+- use load shedding instead of allowing all callers to queue until timeout.
 
-Burst loss is often fixed by smoothing traffic before it reaches the constrained queue, not by increasing application retry count. More retries during a loss burst can amplify congestion.
+Burst loss is often fixed by smoothing traffic before it reaches the constrained queue, not by increasing application retries.
 
-## Application impact checklist
+## Case 5: Receiver Pressure Looks Like Loss
 
-Loss matters most when it changes user-visible behavior. Connect packet-level evidence to application metrics:
+Strong signals:
 
-- TCP retransmissions;
+- packets arrive at destination;
+- application responds slowly or stops reading;
+- receive queues grow;
+- CPU, GC, locks, disk, or downstream dependencies are saturated;
+- retransmissions correlate with receiver-side application latency.
+
+Checks:
+
+```bash
+ss -tanp | grep '<process>'
+ss -tinp | grep '<peer-ip>'
+top
+pidstat -u 1 5
+pidstat -d 1 5
+```
+
+Fix path:
+
+- profile the receiving application;
+- fix blocked read loops or slow response writers;
+- reduce downstream blocking;
+- add backpressure;
+- scale workers only after proving the bottleneck.
+
+An overloaded receiver can make TCP behave badly even when the network path is not dropping packets.
+
+## Case 6: ICMP Loss But Application Traffic Is Fine
+
+Strong signals:
+
+- `mtr` or ping shows loss at an intermediate hop;
+- destination has no loss;
+- TCP retransmissions do not rise;
+- application latency and timeout rate are stable;
+- only ICMP is affected.
+
+Response:
+
+- document it as ICMP rate limiting unless proven otherwise;
+- avoid noisy alerts based only on middle-hop ICMP loss;
+- monitor destination and application traffic instead.
+
+This avoids chasing harmless router behavior.
+
+## Application Impact Checklist
+
+Packet loss matters operationally when it changes user-visible behavior. Correlate packet evidence with:
+
 - request latency p95/p99;
 - timeout rate;
 - retry rate;
+- TCP retransmission deltas;
 - upstream saturation;
 - queue depth;
-- regional error distribution.
+- regional error distribution;
+- affected endpoints or clients;
+- deploy/batch/traffic events.
 
-This prevents chasing harmless ICMP rate limiting while ignoring real application failure.
+This is how you avoid debugging harmless ICMP noise while ignoring real service degradation.
 
-## Short checklist
+## What Not To Do
 
-- Capture the bad time window.
-- Compare good and bad peers.
-- Check interface counters before blaming the provider.
-- Correlate loss with traffic and CPU.
-- Use two-sided captures when the direction is unclear.
-- Escalate with source, destination, timestamp, protocol, and proof of application impact.
+- Do not rely on one ping result.
+- Do not assume no ICMP loss means no application packet loss.
+- Do not assume ICMP loss at one middle hop means forwarding loss.
+- Do not ignore host, virtual interface, CNI, NAT, and receiver counters.
+- Do not escalate to a provider without source, destination, port, timestamp, and application impact.
+- Do not increase retries during a loss burst without a total deadline and backoff.
+- Do not restart the suspected node before capturing counter deltas when root cause matters.
+
+## Decision Tree
+
+```text
+intermittent packet loss suspected
+|
++-- application latency/timeouts also increased?
+|   |
+|   +-- no: treat packet signal as low priority until correlated
+|
++-- ICMP loss only at middle hop, destination clean?
+|   |
+|   +-- likely ICMP rate limiting; verify app/TCP metrics
+|
++-- retransmission counters rise during incident?
+|   |
+|   +-- inspect source/destination sockets, path, receiver pressure
+|
++-- interface or virtual network drops increase?
+|   |
+|   +-- inspect host/NIC/veth/bridge/CNI/softirq queue
+|
++-- two-sided capture shows packet leaves source but not destination?
+|   |
+|   +-- forward-path loss between capture points
+|
++-- destination receives data but source retransmits?
+|   |
+|   +-- return-path/ACK loss, capture placement, or receiver delay
+|
++-- loss only during bursts?
+    |
+    +-- inspect congestion, queue drops, batch jobs, retry amplification
+```
+
+## Minimal Incident Note Template
+
+```text
+Symptom:
+- time window:
+- source IP/subnet:
+- destination IP/subnet:
+- protocol/port:
+- affected application route:
+- user impact:
+
+Application evidence:
+- latency p95/p99:
+- timeout rate:
+- retry rate:
+- affected clients/regions:
+
+Network evidence:
+- ping/mtr destination result:
+- TCP retransmission delta:
+- ss -ti sample:
+- source interface counters before/after:
+- destination interface counters before/after:
+- virtual network/CNI/NAT counters:
+- source-side pcap:
+- destination-side pcap:
+
+Direction:
+- forward path loss:
+- return path loss:
+- host/local queue:
+- receiver pressure:
+
+Hypothesis:
+- suspected drop point:
+- evidence:
+
+Fix:
+- network/config/capacity/app change:
+- validation:
+```
+
+The incident is understood when packet loss is tied to a specific flow, direction, time window, and application impact.
+
+## References
+
+- [Linux `ip-link(8)` manual page](https://man7.org/linux/man-pages/man8/ip-link.8.html)
+- [Linux `tcp(7)` manual page](https://man7.org/linux/man-pages/man7/tcp.7.html)
+- [Linux `ss(8)` manual page](https://man7.org/linux/man-pages/man8/ss.8.html)
+- [tcpdump manual page](https://www.tcpdump.org/manpages/tcpdump.1.html)
+- [RFC 9293: Transmission Control Protocol](https://www.rfc-editor.org/rfc/rfc9293)
+- [RFC 5681: TCP Congestion Control](https://www.rfc-editor.org/rfc/rfc5681)
