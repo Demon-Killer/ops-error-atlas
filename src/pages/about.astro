@@ -40,6 +40,30 @@ import BaseLayout from '../layouts/BaseLayout.astro';
 				real troubleshooting workflow. Updates prioritize concrete commands, decision tables,
 				common misdiagnoses, and related failure patterns over generic definitions.
 			</p>
+			<h2>Editorial process</h2>
+			<p>
+				Each guide starts from a specific error string or operational symptom. The draft is
+				checked against common Linux, TCP, Nginx, DNS, TLS, and backend service behavior before
+				publication. Pages are kept narrow on purpose: the goal is to help a reader decide what
+				to inspect next, not to replace full vendor documentation.
+			</p>
+			<p>
+				When a guide includes commands, they are selected for diagnosis rather than blind
+				configuration changes. Destructive or environment-specific actions are avoided unless
+				the page clearly explains why they need extra review.
+			</p>
+			<h2>Limitations</h2>
+			<p>
+				Troubleshooting depends on the exact runtime, kernel, proxy chain, cloud network, and
+				deployment history. A guide can narrow the search, but it cannot guarantee a root cause
+				without logs, metrics, traces, packet captures, and local context from your system.
+			</p>
+			<h2>Advertising and independence</h2>
+			<p>
+				The site may apply for advertising to support maintenance. Advertising does not decide
+				which errors are covered or how diagnosis steps are written. Corrections and safer
+				troubleshooting guidance take priority over monetization.
+			</p>
 			<h2>Corrections</h2>
 			<p>
 				Technical corrections are welcome. If a command is misleading, a cause is missing, or a

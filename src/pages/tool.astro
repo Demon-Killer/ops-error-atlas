@@ -54,6 +54,47 @@ import { errorRules } from '../data/errorRules';
 			</p>
 		</div>
 	</section>
+	<section class="section section-inner">
+		<div class="text-panel rich-copy">
+			<h2>What this tool is for</h2>
+			<p>
+				Error Explainer is designed for the first few minutes of backend and network
+				troubleshooting. It helps translate a concrete error string into a likely category,
+				common causes, and commands that are worth checking before changing configuration.
+			</p>
+			<p>
+				The tool uses the same local ruleset as the starter error guides. It does not send your
+				input to an external AI model and it does not store pasted error messages.
+			</p>
+
+			<h2>Supported error families</h2>
+			<ul>
+				<li>TCP connection failures such as reset, refused, broken pipe, and no route to host</li>
+				<li>Nginx upstream failures such as 502, 504, upstream timeout, and early close</li>
+				<li>TLS and certificate errors such as handshake failure and unknown authority</li>
+				<li>Timeout errors from curl, backend clients, DNS, and general I/O</li>
+				<li>Linux resource errors such as address already in use and too many open files</li>
+			</ul>
+
+			<h2>Example input</h2>
+			<pre><code>2026-05-13T09:41:17Z curl: (28) Operation timed out after 5000 milliseconds with 0 bytes received</code></pre>
+
+			<h2>How to use the result</h2>
+			<ol>
+				<li>Match the category to the failing layer: DNS, TCP, TLS, proxy, or application.</li>
+				<li>Run the suggested commands in a safe environment first.</li>
+				<li>Compare timestamps across client, proxy, upstream, and infrastructure logs.</li>
+				<li>Open the related error guide when you need a deeper diagnosis flow.</li>
+			</ol>
+
+			<h2>Limitations</h2>
+			<p>
+				The tool cannot inspect your logs, packet captures, deployment events, cloud network, or
+				proxy chain. If it returns no direct match, reduce the input to the exact error phrase
+				and check the full guide list.
+			</p>
+		</div>
+	</section>
 </BaseLayout>
 
 <script define:vars={{ rules: errorRules }}>

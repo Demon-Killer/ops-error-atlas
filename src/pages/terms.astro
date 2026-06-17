@@ -1,0 +1,59 @@
+---
+import BaseLayout from '../layouts/BaseLayout.astro';
+---
+
+<BaseLayout
+	title="Terms | Ops Error Atlas"
+	description="Read the usage terms and limitations for Ops Error Atlas technical troubleshooting content."
+>
+	<section class="page-hero section-inner">
+		<h1 class="page-title">Terms</h1>
+		<p class="page-intro">
+			Ops Error Atlas provides educational troubleshooting references for backend and network
+			errors. Use the guidance carefully and verify commands in your own environment.
+		</p>
+	</section>
+	<section class="section section-inner">
+		<div class="text-panel rich-copy">
+			<h2>Educational use</h2>
+			<p>
+				The guides and Error Explainer are written for general technical education and
+				operational reference. They are not a substitute for incident response procedures,
+				vendor support, or environment-specific review by a qualified engineer.
+			</p>
+
+			<h2>No production guarantee</h2>
+			<p>
+				Command examples can behave differently across Linux distributions, containers, cloud
+				providers, proxies, and application runtimes. Always inspect commands before running
+				them, especially on production systems.
+			</p>
+
+			<h2>Accuracy and updates</h2>
+			<p>
+				Ops Error Atlas aims to keep explanations practical and accurate, but backend and
+				network software changes over time. Content may be updated when better diagnosis
+				steps, clearer examples, or missing failure modes are identified.
+			</p>
+
+			<h2>External links</h2>
+			<p>
+				Some pages may link to documentation, tools, or third-party resources. External sites
+				have their own terms and privacy policies. Ops Error Atlas is not responsible for
+				their content or availability.
+			</p>
+
+			<h2>Advertising</h2>
+			<p>
+				The site may display advertising after approval from an advertising provider. Ads, if
+				enabled, help support the maintenance of free troubleshooting content.
+			</p>
+
+			<h2>Contact</h2>
+			<p>
+				If you find an error, outdated command, or unsafe recommendation, please use the
+				contact page to report it so the guide can be reviewed.
+			</p>
+		</div>
+	</section>
+</BaseLayout>
