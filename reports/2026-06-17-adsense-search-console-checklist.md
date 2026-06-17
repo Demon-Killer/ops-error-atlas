@@ -17,17 +17,30 @@
 2. Select the property for `https://ops-error-atlas.pages.dev/`.
 3. Go to `Sitemaps`.
 4. Submit `sitemap-index.xml`.
-5. Use URL Inspection for these URLs and request indexing:
+5. If URL Inspection quota is available, inspect only these priority URLs first:
    - `https://ops-error-atlas.pages.dev/`
    - `https://ops-error-atlas.pages.dev/errors/`
    - `https://ops-error-atlas.pages.dev/methodology/`
    - `https://ops-error-atlas.pages.dev/about/`
    - `https://ops-error-atlas.pages.dev/tool/`
+6. If Search Console reports that indexing request quota is exceeded, stop manual requests. Do not keep retrying the same URLs. Rely on sitemap discovery and internal links, then check indexing status again after 2-7 days.
+7. After quota resets, inspect a small sample of new article URLs:
    - `https://ops-error-atlas.pages.dev/errors/nginx-upstream-sent-too-big-header/`
    - `https://ops-error-atlas.pages.dev/errors/nginx-client-intended-to-send-too-large-body/`
    - `https://ops-error-atlas.pages.dev/errors/too-many-close-wait-connections/`
    - `https://ops-error-atlas.pages.dev/errors/syn-backlog-overflow/`
    - `https://ops-error-atlas.pages.dev/errors/dns-servfail/`
+
+## If Indexing Request Quota Is Exceeded
+
+- This is expected when too many URL Inspection indexing requests are submitted.
+- It is not a site code error.
+- Do not repeatedly request indexing for the same URL.
+- Confirm that `sitemap-index.xml` was submitted successfully.
+- Confirm that `robots.txt` allows crawling.
+- Confirm that new pages are linked from `/errors/` and related guides.
+- Wait for Googlebot to discover pages through sitemap and internal links.
+- Recheck Search Console indexing status after 2-7 days.
 
 ## AdSense Resubmission Timing
 
