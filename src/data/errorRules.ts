@@ -149,6 +149,90 @@ export const errorRules: ErrorRule[] = [
 		],
 		commands: ['ip route', 'traceroute <host>', 'ping <gateway-ip>'],
 	},
+	{
+		id: 'temporary-failure-in-name-resolution',
+		matchers: ['temporary failure in name resolution', 'name resolution temporarily failed'],
+		category: 'DNS resolution failure',
+		title: 'Temporary failure in name resolution',
+		meaning:
+			'The process could not get a usable DNS answer from its configured resolver before the lookup failed.',
+		causes: [
+			'The configured resolver is unreachable or overloaded.',
+			'The process is using a different resolver inside a container, pod, or service namespace.',
+			'Search domains, split DNS, or systemd-resolved routing are sending the query to the wrong place.',
+		],
+		commands: ['cat /etc/resolv.conf', 'getent hosts <name>', 'dig @<resolver-ip> <name> +time=2 +tries=1'],
+	},
+	{
+		id: 'connect-timed-out',
+		matchers: ['connect timed out', 'connection timed out', 'etimedout'],
+		category: 'TCP connect timeout',
+		title: 'Connect timed out',
+		meaning:
+			'The client did not complete the TCP connection setup before its connect deadline expired.',
+		causes: [
+			'A firewall, security group, or network policy is dropping packets.',
+			'The route or return path to the target is broken.',
+			'The target or load balancer member is unhealthy, unreachable, or under listener pressure.',
+		],
+		commands: ['ip route get <target-ip>', 'nc -vz -w 3 <host> <port>', 'tcpdump -nn host <target-ip> and port <port>'],
+	},
+	{
+		id: 'ssl-wrong-version-number',
+		matchers: ['wrong version number', 'ssl routines::wrong version number'],
+		category: 'TLS protocol mismatch',
+		title: 'SSL wrong version number',
+		meaning:
+			'A TLS client likely reached a listener that is not speaking TLS on that host and port.',
+		causes: [
+			'The URL uses https for a plain HTTP endpoint.',
+			'Nginx or another proxy is using the wrong upstream scheme.',
+			'TLS termination or passthrough is configured at the wrong layer.',
+		],
+		commands: ['curl -v http://<host>:<port>/', 'curl -vk https://<host>:<port>/', 'openssl s_client -connect <host>:<port> -servername <host>'],
+	},
+	{
+		id: 'tls-certificate-expired',
+		matchers: ['certificate has expired', 'certificate expired', 'x509: certificate has expired'],
+		category: 'TLS certificate validity',
+		title: 'TLS certificate expired',
+		meaning:
+			'The TLS client rejected a certificate because the certificate validity period does not include the client time.',
+		causes: [
+			'The leaf certificate or an intermediate certificate is expired.',
+			'A load balancer, CDN edge, or backend is serving an old certificate.',
+			'The client clock is wrong or SNI selected the wrong certificate.',
+		],
+		commands: ['date -u', 'openssl s_client -connect <host>:443 -servername <host> -showcerts', 'curl -v https://<host>/'],
+	},
+	{
+		id: 'nginx-host-not-found-in-upstream',
+		matchers: ['host not found in upstream', 'no resolver defined to resolve'],
+		category: 'Nginx upstream DNS failure',
+		title: 'Nginx host not found in upstream',
+		meaning:
+			'Nginx could not resolve the upstream hostname at configuration load time or request time.',
+		causes: [
+			'The upstream hostname is wrong or unavailable in the Nginx runtime environment.',
+			'Nginx is running in Docker or Kubernetes with different DNS than the host.',
+			'Variable proxy_pass requires a resolver directive that is missing or unreachable.',
+		],
+		commands: ['nginx -T | grep -nE "upstream|proxy_pass|resolver"', 'getent hosts <upstream-name>', 'cat /etc/resolv.conf'],
+	},
+	{
+		id: 'cannot-assign-requested-address',
+		matchers: ['cannot assign requested address', 'eaddrnotavail'],
+		category: 'Unavailable local socket address',
+		title: 'Cannot assign requested address',
+		meaning:
+			'The process tried to bind or use a local address/socket tuple that is not available in its network namespace.',
+		causes: [
+			'The configured bind IP is not present on the host, container, or pod.',
+			'Outbound connections are exhausting local ephemeral ports.',
+			'The application explicitly chose a source IP that the kernel cannot use.',
+		],
+		commands: ['ip addr', 'ip route get <remote-ip>', 'ss -tan state time-wait | wc -l'],
+	},
 ];
 
 export function findRule(input: string): ErrorRule | undefined {

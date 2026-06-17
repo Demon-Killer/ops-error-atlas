@@ -11,6 +11,8 @@ tags:
 related:
   - x509-certificate-signed-by-unknown-authority
   - tls-certificate-verify-failed
+  - tls-certificate-expired
+  - ssl-wrong-version-number
   - tls-handshake-timeout
   - curl-28-operation-timed-out
 ---

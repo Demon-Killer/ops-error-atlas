@@ -9,6 +9,7 @@ tags:
   - Linux
   - networking
 related:
+  - temporary-failure-in-name-resolution
   - no-route-to-host
   - io-timeout
   - curl-28-operation-timed-out

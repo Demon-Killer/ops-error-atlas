@@ -10,6 +10,7 @@ tags:
   - sockets
 related:
   - connection-reset-by-peer
+  - connect-timed-out
   - no-route-to-host
   - address-already-in-use
   - nginx-502-bad-gateway

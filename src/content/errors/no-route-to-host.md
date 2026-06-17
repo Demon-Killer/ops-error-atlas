@@ -9,6 +9,7 @@ tags:
   - routing
   - networking
 related:
+  - connect-timed-out
   - connection-refused
   - dns-server-unreachable
   - high-network-latency
