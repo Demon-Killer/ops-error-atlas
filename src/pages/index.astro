@@ -19,6 +19,30 @@ const popular = entries
 	.filter((entry) => entry.data.popular && !deepDiveSlugs.includes(entry.data.slug))
 	.slice(0, 3);
 const latest = entries.slice(0, 6);
+const diagnosticPaths = [
+	{
+		title: 'Connection setup fails',
+		description:
+			'Use these when the client cannot establish a stable TCP connection to the target.',
+		slugs: ['connect-timed-out', 'connection-refused', 'no-route-to-host'],
+	},
+	{
+		title: 'Connection closes early',
+		description:
+			'Use these when a request starts but a peer, proxy, or application closes the socket.',
+		slugs: ['connection-reset-by-peer', 'broken-pipe', 'socket-hang-up'],
+	},
+	{
+		title: 'Proxy and upstream failures',
+		description:
+			'Use these when Nginx reaches the request path but the upstream exchange fails.',
+		slugs: [
+			'nginx-502-bad-gateway',
+			'upstream-prematurely-closed-connection',
+			'nginx-upstream-sent-too-big-header',
+		],
+	},
+];
 const topicClusters = [
 	{
 		title: 'Nginx upstream failures',
@@ -153,6 +177,38 @@ const searchItems = entries.map((entry) => ({
 
 	<section class="section section-inner">
 		<SearchBox items={searchItems} />
+	</section>
+
+	<section class="section section-inner">
+		<div class="section-heading">
+			<div>
+				<h2>Start From The Failure Phase</h2>
+				<p>Pick the branch that matches what failed before changing timeouts or configs.</p>
+			</div>
+		</div>
+		<div class="grid">
+			{
+				diagnosticPaths.map((path) => (
+					<section class="card">
+						<div class="card-meta">
+							<span>Diagnosis path</span>
+						</div>
+						<h3>{path.title}</h3>
+						<p>{path.description}</p>
+						<ul class="cluster-list">
+							{path.slugs.map((slug) => {
+								const entry = entries.find((candidate) => candidate.data.slug === slug);
+								return entry ? (
+									<li>
+										<a href={`/errors/${entry.data.slug}/`}>{entry.data.title}</a>
+									</li>
+								) : null;
+							})}
+						</ul>
+					</section>
+				))
+			}
+		</div>
 	</section>
 
 	<section class="section section-inner">

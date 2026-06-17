@@ -29,6 +29,28 @@ const categories = [
 		tags: ['Linux', 'DNS'],
 	},
 ];
+const diagnosisMatrix = [
+	{
+		signal: 'Connect never completes',
+		firstLayer: 'Routing, firewall, listener, load balancer target',
+		slugs: ['connect-timed-out', 'connection-refused', 'no-route-to-host'],
+	},
+	{
+		signal: 'Connection starts then closes abruptly',
+		firstLayer: 'TCP reset, keepalive reuse, proxy close, app restart',
+		slugs: ['connection-reset-by-peer', 'broken-pipe', 'socket-hang-up'],
+	},
+	{
+		signal: 'Nginx reaches upstream but returns gateway error',
+		firstLayer: 'Upstream connect, header, body, timeout, protocol mismatch',
+		slugs: ['nginx-502-bad-gateway', 'nginx-upstream-sent-too-big-header', 'nginx-upstream-timed-out'],
+	},
+	{
+		signal: 'Name lookup fails before connection',
+		firstLayer: 'Resolver, DNS view, CoreDNS, DNSSEC, private zone',
+		slugs: ['dns-server-unreachable', 'temporary-failure-in-name-resolution', 'dns-servfail'],
+	},
+];
 const searchItems = entries.map((entry) => ({
 	title: entry.data.title,
 	href: `/errors/${entry.data.slug}/`,
@@ -65,6 +87,37 @@ const searchItems = entries.map((entry) => ({
 
 	<section class="section section-inner">
 		<SearchBox items={searchItems} />
+	</section>
+
+	<section class="section section-inner">
+		<div class="section-heading">
+			<div>
+				<h2>Diagnosis matrix</h2>
+				<p>Use the first visible signal to choose the right guide cluster.</p>
+			</div>
+		</div>
+		<div class="grid">
+			{
+				diagnosisMatrix.map((row) => (
+					<section class="card">
+						<div class="card-meta">
+							<span>{row.firstLayer}</span>
+						</div>
+						<h3>{row.signal}</h3>
+						<ul class="cluster-list">
+							{row.slugs.map((slug) => {
+								const entry = entries.find((candidate) => candidate.data.slug === slug);
+								return entry ? (
+									<li>
+										<a href={`/errors/${entry.data.slug}/`}>{entry.data.title}</a>
+									</li>
+								) : null;
+							})}
+						</ul>
+					</section>
+				))
+			}
+		</div>
 	</section>
 
 	<section class="section section-inner">
