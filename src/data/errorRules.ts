@@ -233,6 +233,76 @@ export const errorRules: ErrorRule[] = [
 		],
 		commands: ['ip addr', 'ip route get <remote-ip>', 'ss -tan state time-wait | wc -l'],
 	},
+	{
+		id: 'nginx-upstream-sent-too-big-header',
+		matchers: ['upstream sent too big header'],
+		category: 'Nginx upstream header limit',
+		title: 'Nginx upstream sent too big header',
+		meaning:
+			'Nginx received upstream response headers that exceeded the configured proxy buffer limits.',
+		causes: [
+			'The upstream returned oversized cookies, auth tokens, redirects, or custom headers.',
+			'A route or backend is returning a different response than expected.',
+			'Proxy buffer settings are too small for a legitimate bounded response header.',
+		],
+		commands: ['grep -i "upstream sent too big header" /var/log/nginx/error.log', 'curl -sv -I http://<upstream>/<path>', 'nginx -T | grep -n "proxy_buffer"'],
+	},
+	{
+		id: 'nginx-client-intended-to-send-too-large-body',
+		matchers: ['client intended to send too large body', '413 request entity too large'],
+		category: 'Nginx request body limit',
+		title: 'Nginx client intended to send too large body',
+		meaning:
+			'Nginx rejected the request because the body exceeded the active client_max_body_size limit.',
+		causes: [
+			'The upload route needs a larger route-specific body limit.',
+			'Another proxy, ingress, CDN, or application layer has a lower upload limit.',
+			'The client is sending an unexpectedly large JSON, file, or base64 payload.',
+		],
+		commands: ['grep -i "client intended to send too large body" /var/log/nginx/error.log', 'nginx -T | grep -n "client_max_body_size"', 'grep "<path>" /var/log/nginx/access.log'],
+	},
+	{
+		id: 'too-many-close-wait-connections',
+		matchers: ['close_wait', 'close-wait', 'too many close_wait'],
+		category: 'TCP socket cleanup issue',
+		title: 'Too many CLOSE_WAIT connections',
+		meaning:
+			'The peer closed the connection, but the local application has not closed its socket file descriptor.',
+		causes: [
+			'Application code is not closing response bodies, streams, sockets, or cursors.',
+			'Workers are blocked and cleanup is delayed.',
+			'Client disconnects or dependency closes are not handled correctly.',
+		],
+		commands: ['ss -tanp state close-wait', 'lsof -p <pid> | wc -l', 'top -H -p <pid>'],
+	},
+	{
+		id: 'syn-backlog-overflow',
+		matchers: ['syn backlog', 'listen queue overflow', 'syns to listen sockets dropped'],
+		category: 'TCP listener pressure',
+		title: 'SYN backlog overflow',
+		meaning:
+			'The host or process is not keeping up with incoming TCP connection attempts for a listener.',
+		causes: [
+			'The application is not accepting connections fast enough.',
+			'Load balancer or clients are creating excessive new connection churn.',
+			'Unwanted traffic or SYN flood behavior is filling the handshake queue.',
+		],
+		commands: ['netstat -s | egrep -i "listen|overflow|SYN"', 'ss -ltnp', 'tcpdump -nn port <port> and tcp'],
+	},
+	{
+		id: 'dns-servfail',
+		matchers: ['servfail', 'server failure'],
+		category: 'DNS resolver failure',
+		title: 'DNS SERVFAIL',
+		meaning:
+			'The resolver answered the query but failed to complete resolution successfully.',
+		causes: [
+			'Authoritative DNS, delegation, or DNSSEC validation is broken.',
+			'The resolver has an upstream forwarding or policy problem.',
+			'Private DNS or split DNS routing sends the query to the wrong resolver path.',
+		],
+		commands: ['dig @<resolver-ip> <name> A +time=2 +tries=1', 'dig <name> A +trace', 'dig <name> A +dnssec'],
+	},
 ];
 
 export function findRule(input: string): ErrorRule | undefined {

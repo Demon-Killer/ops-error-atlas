@@ -11,6 +11,7 @@ tags:
 related:
   - nginx-upstream-timed-out
   - nginx-504-gateway-timeout
+  - nginx-client-intended-to-send-too-large-body
   - broken-pipe
   - upstream-prematurely-closed-connection
 ---

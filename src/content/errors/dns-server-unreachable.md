@@ -9,6 +9,7 @@ tags:
   - Linux
   - networking
 related:
+  - dns-servfail
   - temporary-failure-in-name-resolution
   - no-route-to-host
   - io-timeout

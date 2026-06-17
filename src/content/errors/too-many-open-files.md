@@ -9,6 +9,7 @@ tags:
   - limits
   - services
 related:
+  - too-many-close-wait-connections
   - broken-pipe
   - io-timeout
   - socket-hang-up

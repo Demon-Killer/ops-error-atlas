@@ -10,6 +10,7 @@ tags:
   - reverse-proxy
 related:
   - upstream-prematurely-closed-connection
+  - nginx-upstream-sent-too-big-header
   - nginx-upstream-timed-out
   - nginx-host-not-found-in-upstream
   - nginx-504-gateway-timeout

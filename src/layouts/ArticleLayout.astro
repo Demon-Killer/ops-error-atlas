@@ -41,10 +41,12 @@ const articleJsonLd = {
 	author: {
 		'@type': 'Organization',
 		name: 'Ops Error Atlas',
+		url: new URL('/about/', site).toString(),
 	},
 	publisher: {
 		'@type': 'Organization',
 		name: 'Ops Error Atlas',
+		url: new URL('/', site).toString(),
 	},
 	keywords: tags.join(', '),
 	mainEntityOfPage: canonical,
@@ -99,9 +101,9 @@ const breadcrumbJsonLd = {
 				<div class="editorial-note">
 					<strong>Editorial note</strong>
 					<p>
-						This guide is maintained as an operational reference for engineers. It favors
-						evidence, command output, and failure-layer separation over broad definitions or
-						blind configuration changes.
+						This guide is maintained by Ops Error Atlas from a backend engineering
+						perspective. It favors evidence, command output, and failure-layer separation
+						over broad definitions or blind configuration changes.
 					</p>
 					<a href="/methodology/">How Ops Error Atlas reviews guides</a>
 				</div>
