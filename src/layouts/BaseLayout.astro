@@ -511,6 +511,32 @@ const canonical = new URL(Astro.url.pathname, site).toString();
 		background: rgba(20, 34, 53, 0.08);
 	}
 
+	.editorial-note {
+		margin: 0 0 1.5rem;
+		padding: 1rem 1.1rem;
+		border: 1px solid var(--line);
+		border-radius: var(--radius-md);
+		background: rgba(255, 255, 255, 0.62);
+	}
+
+	.editorial-note + .editorial-note {
+		margin-top: 2rem;
+	}
+
+	.editorial-note strong {
+		display: block;
+		margin-bottom: 0.35rem;
+	}
+
+	.editorial-note p {
+		margin: 0 0 0.6rem;
+	}
+
+	.editorial-note a {
+		font-weight: 700;
+		color: var(--accent-strong);
+	}
+
 	.tool-form {
 		display: grid;
 		gap: 1rem;

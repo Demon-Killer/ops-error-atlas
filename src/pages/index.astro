@@ -82,7 +82,7 @@ const searchItems = entries.map((entry) => ({
 				</div>
 				<div class="hero-highlights">
 					<span class="stat-chip">One page per error</span>
-					<span class="stat-chip">Short diagnosis steps</span>
+					<span class="stat-chip">Evidence-first diagnosis</span>
 					<span class="stat-chip">Shell commands included</span>
 				</div>
 			</div>
@@ -90,15 +90,15 @@ const searchItems = entries.map((entry) => ({
 				<ul class="metrics-grid">
 					<li>
 						<strong>{entries.length}</strong>
-						<span>Starter guides ready</span>
+						<span>Detailed error guides</span>
 					</li>
 					<li>
-						<strong>10</strong>
-						<span>Tool rules in the first build</span>
+						<strong>5</strong>
+						<span>Failure layers covered</span>
 					</li>
 					<li>
-						<strong>1 week</strong>
-						<span>Reasonable launch window</span>
+						<strong>0</strong>
+						<span>Blind config changes recommended</span>
 					</li>
 				</ul>
 			</div>
@@ -217,6 +217,22 @@ const searchItems = entries.map((entry) => ({
 		<div class="text-panel">
 			<div class="section-heading">
 				<div>
+					<h2>How the guides are written</h2>
+					<p>
+						Every guide starts with a concrete production-style error string, then separates
+						evidence from guesses: the failing layer, the command output to capture, the common
+						traps, and the smallest safe fix.
+					</p>
+				</div>
+				<a class="button button-secondary" href="/methodology/">Read the methodology</a>
+			</div>
+		</div>
+	</section>
+
+	<section class="section section-inner">
+		<div class="text-panel">
+			<div class="section-heading">
+				<div>
 					<h2>Updated as production patterns become clearer.</h2>
 					<p>
 						Ops Error Atlas prioritizes improving existing troubleshooting guides when a
@@ -235,8 +251,8 @@ const searchItems = entries.map((entry) => ({
 				<div>
 					<h2>Paste an error. Get the likely meaning and next steps.</h2>
 					<p>
-						The first release of the Error Explainer uses a local ruleset, not a large
-						model, so results stay narrow and fast.
+						Error Explainer uses a local ruleset for common backend, network, TLS, and
+						timeout failures, so results stay narrow, fast, and inspectable.
 					</p>
 				</div>
 				<a class="button button-primary" href="/tool/">Open the tool</a>

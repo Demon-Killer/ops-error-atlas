@@ -1,0 +1,82 @@
+---
+import BaseLayout from '../layouts/BaseLayout.astro';
+---
+
+<BaseLayout
+	title="Troubleshooting Methodology | Ops Error Atlas"
+	description="Learn how Ops Error Atlas creates backend and network troubleshooting guides from concrete error strings, evidence, commands, and safe verification steps."
+>
+	<section class="page-hero section-inner">
+		<h1 class="page-title">Troubleshooting Methodology</h1>
+		<p class="page-intro">
+			Ops Error Atlas is written for engineers who need to move from a noisy error message
+			to a testable hypothesis. The site is intentionally narrow: backend, Linux, TCP, TLS,
+			Nginx, DNS, and timeout failures.
+		</p>
+	</section>
+
+	<section class="section section-inner">
+		<div class="text-panel rich-copy">
+			<h2>What makes a guide useful</h2>
+			<p>
+				A useful troubleshooting guide should do more than define an error phrase. It should
+				explain what layer produced the symptom, which signals separate similar failures, what
+				commands preserve useful evidence, and what changes are risky without more context.
+			</p>
+			<p>
+				Ops Error Atlas pages are built around that structure. Each page starts from one
+				specific error string or operational symptom, then works outward to adjacent causes.
+				The goal is not to provide a universal fix. The goal is to help the reader decide the
+				next safe diagnostic step.
+			</p>
+
+			<h2>The evidence-first workflow</h2>
+			<ol>
+				<li>Capture the exact error string, timestamp, source, destination, and runtime.</li>
+				<li>Identify the failing layer: DNS, TCP, TLS, proxy, application, or host resource.</li>
+				<li>Run read-only commands before making configuration changes.</li>
+				<li>Compare client, proxy, upstream, and infrastructure logs for the same timestamp.</li>
+				<li>Apply the smallest fix that matches the evidence.</li>
+				<li>Record the verification command so the result can be repeated.</li>
+			</ol>
+
+			<h2>How topics are selected</h2>
+			<p>
+				Topics are chosen when an error is common in backend operations and easy to
+				misdiagnose under incident pressure. Examples include <code>connection refused</code>,
+				<code>connection reset by peer</code>, <code>upstream timed out</code>,
+				<code>x509: certificate signed by unknown authority</code>, and
+				<code>too many open files</code>.
+			</p>
+			<p>
+				A topic is a good fit when it can be explained with concrete signals: socket state,
+				DNS resolution, TLS handshake output, Nginx upstream timings, Kubernetes endpoints,
+				packet loss evidence, or Linux resource counters.
+			</p>
+
+			<h2>Command and safety policy</h2>
+			<p>
+				Commands are selected for diagnosis first. Pages prefer commands that read state,
+				print logs, inspect sockets, or show routing and certificate information. Destructive
+				actions, broad firewall changes, and global timeout increases are avoided unless a
+				guide explains why the change needs review.
+			</p>
+			<p>
+				Production systems differ by kernel, container runtime, proxy chain, cloud network,
+				service mesh, and deploy history. The same error message can point to different root
+				causes, so every fix should be verified in the actual environment.
+			</p>
+
+			<h2>How pages are maintained</h2>
+			<p>
+				Existing pages are updated when a guide needs a clearer decision tree, a safer
+				command, a missing failure mode, or a better connection to related errors. The site
+				prioritizes improving useful guides over publishing many shallow pages.
+			</p>
+			<p>
+				Corrections are welcome through the contact page, especially for unsafe commands,
+				misleading explanations, missing platform details, or outdated references.
+			</p>
+		</div>
+	</section>
+</BaseLayout>

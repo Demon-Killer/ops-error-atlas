@@ -43,8 +43,24 @@ const searchItems = entries.map((entry) => ({
 		<h1 class="page-title">Error Guides</h1>
 		<p class="page-intro">
 			Each page explains one concrete backend or network error, the common causes behind it,
-			and the first commands worth running.
+			the evidence that separates lookalike failures, and the first commands worth running.
 		</p>
+	</section>
+
+	<section class="section section-inner">
+		<div class="text-panel rich-copy">
+			<h2>How to use this library</h2>
+			<p>
+				Start with the exact phrase from the log, then confirm the layer that produced it:
+				DNS, TCP, TLS, proxy, application runtime, or host resource limit. The guides are
+				organized to prevent a common incident mistake: changing timeout, kernel, or proxy
+				settings before proving which component failed.
+			</p>
+			<p>
+				If a symptom crosses layers, use the related guide links and the topic clusters below
+				to move from the visible error to adjacent causes.
+			</p>
+		</div>
 	</section>
 
 	<section class="section section-inner">

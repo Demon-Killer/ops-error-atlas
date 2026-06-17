@@ -88,7 +88,7 @@ const breadcrumbJsonLd = {
 			<div class="hero-highlights">
 				<span class="note-chip">Published {publishedLabel}</span>
 				{updatedLabel && <span class="note-chip">Updated {updatedLabel}</span>}
-				<span class="note-chip">One error per page</span>
+				<span class="note-chip">Reviewed for incident use</span>
 				<span class="note-chip">Commands included</span>
 			</div>
 		</div>
@@ -96,7 +96,25 @@ const breadcrumbJsonLd = {
 	<section class="section-inner">
 		<div class="article-shell">
 			<article class="rich-copy">
+				<div class="editorial-note">
+					<strong>Editorial note</strong>
+					<p>
+						This guide is maintained as an operational reference for engineers. It favors
+						evidence, command output, and failure-layer separation over broad definitions or
+						blind configuration changes.
+					</p>
+					<a href="/methodology/">How Ops Error Atlas reviews guides</a>
+				</div>
 				<slot />
+				<div class="editorial-note">
+					<strong>Before applying a fix</strong>
+					<p>
+						Keep one representative log line, the failing source and destination, the command
+						output you used, and the verification command after the change. This makes the
+						result reproducible and helps separate temporary recovery from a proven fix.
+					</p>
+					<a href="/errors/">Browse related error guides</a>
+				</div>
 			</article>
 			<aside class="article-toc" aria-label="Table of contents">
 				<div class="article-summary">

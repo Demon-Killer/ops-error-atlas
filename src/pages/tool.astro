@@ -12,7 +12,7 @@ import { errorRules } from '../data/errorRules';
 			<h1>Error Explainer</h1>
 			<p class="tool-intro">
 				Paste a backend or network error message and get a plain-English explanation. The
-				first release uses a practical local ruleset, not an external model.
+				explainer uses a practical local ruleset, not an external model.
 			</p>
 			<form class="tool-form" id="tool-form">
 				<label for="error-input">Paste an error message here</label>
@@ -63,7 +63,7 @@ import { errorRules } from '../data/errorRules';
 				common causes, and commands that are worth checking before changing configuration.
 			</p>
 			<p>
-				The tool uses the same local ruleset as the starter error guides. It does not send your
+				The tool uses the same local ruleset as the published error guides. It does not send your
 				input to an external AI model and it does not store pasted error messages.
 			</p>
 
@@ -134,7 +134,7 @@ import { errorRules } from '../data/errorRules';
 		title: 'No direct match yet',
 		category: 'Unknown error pattern',
 		meaning:
-			'This message does not match the starter ruleset. Narrow it down to the concrete network, timeout, TLS, or socket error string first.',
+			'This message does not match the current local ruleset. Narrow it down to the concrete network, timeout, TLS, or socket error string first.',
 		causes: [
 			'The message is too broad and contains multiple errors at once.',
 			'The real root cause appears in another log line before or after this one.',
