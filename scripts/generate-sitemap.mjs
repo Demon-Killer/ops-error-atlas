@@ -3,7 +3,8 @@ import path from 'node:path';
 
 const site = 'https://ops-error-atlas.pages.dev';
 const contentDir = path.resolve('src/content/errors');
-const outputFile = path.resolve('public/sitemap.xml');
+const xmlOutputFile = path.resolve('public/sitemap.xml');
+const textOutputFile = path.resolve('public/sitemap.txt');
 const defaultLastmod = '2026-06-17T00:00:00.000Z';
 
 const staticPages = [
@@ -60,4 +61,5 @@ ${urls
 </urlset>
 `;
 
-fs.writeFileSync(outputFile, xml, 'utf8');
+fs.writeFileSync(xmlOutputFile, xml, 'utf8');
+fs.writeFileSync(textOutputFile, `${urls.map(({ loc }) => loc).join('\n')}\n`, 'utf8');
