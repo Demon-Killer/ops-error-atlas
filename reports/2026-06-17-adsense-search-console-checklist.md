@@ -3,7 +3,7 @@
 ## Current Site State
 
 - Site URL: `https://ops-error-atlas.pages.dev/`
-- Sitemap: `https://ops-error-atlas.pages.dev/sitemap-index.xml`
+- Sitemap: `https://ops-error-atlas.pages.dev/sitemap.xml`
 - Robots: `https://ops-error-atlas.pages.dev/robots.txt`
 - Error guide count after this update: 34
 - Generated static page count after this update: 42
@@ -16,7 +16,7 @@
 1. Open Google Search Console.
 2. Select the property for `https://ops-error-atlas.pages.dev/`.
 3. Go to `Sitemaps`.
-4. Submit `sitemap-index.xml`.
+4. Submit `sitemap.xml`.
 5. If URL Inspection quota is available, inspect only these priority URLs first:
    - `https://ops-error-atlas.pages.dev/`
    - `https://ops-error-atlas.pages.dev/errors/`
@@ -36,7 +36,7 @@
 - This is expected when too many URL Inspection indexing requests are submitted.
 - It is not a site code error.
 - Do not repeatedly request indexing for the same URL.
-- Confirm that `sitemap-index.xml` was submitted successfully.
+- Confirm that `sitemap.xml` was submitted successfully.
 - Confirm that `robots.txt` allows crawling.
 - Confirm that new pages are linked from `/errors/` and related guides.
 - Wait for Googlebot to discover pages through sitemap and internal links.
